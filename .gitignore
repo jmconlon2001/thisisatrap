@@ -1,0 +1,7 @@
+bin/
+obj/
+.vs/
+*.user
+src/MailTrap/App_Data/
+src/MailTrap/logs/
+deploy/deploy.log
