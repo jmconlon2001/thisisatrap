@@ -16,7 +16,10 @@
         settings: null,
         live: false,
         view: 'mail',
+        inbox: '',      // '' = all inboxes, otherwise an inbox slug
+        inboxes: [],
     };
+    try { state.inbox = localStorage.getItem('mt-inbox') || ''; } catch (err) { }
 
     var $ = function (id) { return document.getElementById(id); };
     var listEl = $('msg-list'), readerEl = $('reader'), mailEl = $('mail');
@@ -76,7 +79,155 @@
         if (state.q) p.set('q', state.q);
         if (state.folder === 'unread') p.set('unread', 'true');
         if (state.folder === 'attachments') p.set('attachments', 'true');
+        if (state.inbox) p.set('inbox', state.inbox);
         return 'messages?' + p.toString();
+    }
+    function inboxScope() { return state.inbox ? '?inbox=' + encodeURIComponent(state.inbox) : ''; }
+
+    // ---------- inboxes ----------
+    function inboxBySlug(slug) { return state.inboxes.find(function (i) { return i.slug === slug; }); }
+    function inboxName(slug) { var i = inboxBySlug(slug); return i ? i.name : slug; }
+    function multiInbox() { return state.inboxes.length > 1; }
+
+    var inboxReloadTimer;
+    function loadInboxes() {
+        return api('inboxes').then(function (list) {
+            state.inboxes = list;
+            if (state.inbox && !inboxBySlug(state.inbox)) { setInbox(''); return; }
+            renderInboxNav();
+            renderCounts();
+        }).catch(function () { });
+    }
+    function reloadInboxesSoon() { clearTimeout(inboxReloadTimer); inboxReloadTimer = setTimeout(loadInboxes, 250); }
+
+    function renderInboxNav() {
+        var totalUnread = state.inboxes.reduce(function (s, i) { return s + i.unread; }, 0);
+        var row = function (slug, name, unread, icon, title) {
+            return '<button type="button" class="nav-item-link' + (state.inbox === slug ? ' active' : '') + '" data-inbox="' + esc(slug) + '" title="' + esc(title) + '">' +
+                '<i class="i ' + icon + '"></i> <span class="nav-label">' + esc(name) + '</span>' +
+                '<span class="nav-count' + (unread ? ' hot' : '') + '">' + unread + '</span></button>';
+        };
+        $('inbox-nav').innerHTML = row('', 'All inboxes', totalUnread, 'i-layers', 'Messages from every inbox') +
+            state.inboxes.map(function (i) {
+                return row(i.slug, i.name, i.unread, 'i-inbox', i.isDefault ? 'Mail sent without a username' : 'SMTP username: ' + i.slug);
+            }).join('');
+    }
+
+    function setInbox(slug) {
+        state.inbox = slug;
+        try { localStorage.setItem('mt-inbox', slug); } catch (err) { }
+        if (state.view !== 'mail') showView('mail');
+        clearSelection();
+        renderInboxNav();
+        updateTitle();
+        $('nav-toggle').checked = false;
+        return loadList();
+    }
+
+    function updateTitle() {
+        var base = state.inbox ? inboxName(state.inbox) : 'All inboxes';
+        $('folder-title').textContent = base + (state.folder !== 'all' ? ' · ' + folderTitles[state.folder] : '');
+        $('inbox-settings-btn').hidden = !state.inbox;
+    }
+
+    function credentialsHtml(slug) {
+        var s = state.settings, host = location.hostname, port = s ? s.smtp.port : 25;
+        return '<div class="stat-row cred-row">' +
+            '<div><strong class="mono">' + esc(host) + ':' + port + '</strong><span>SMTP server</span></div>' +
+            '<div><strong class="mono">' + esc(slug) + '</strong><span>Username</span></div>' +
+            '<div><strong>Anything</strong><span>Password</span></div></div>' +
+            '<div class="form-text" style="margin-top:.6rem">No SMTP login? Add the header <span class="mono">' + esc((s && s.smtp.routingHeader) || 'X-Trap-Inbox') + ': ' + esc(slug) + '</span> to the message instead.</div>';
+    }
+
+    function openNewInbox() {
+        var modal = openModal('New inbox', 'i-inbox',
+            '<p style="margin-top:0">Give each app or environment its own inbox. Mail is routed by <strong>SMTP username</strong>, so the inbox key below is the username to configure.</p>' +
+            '<label class="form-label" for="ni-name">Name</label><input class="form-control" id="ni-name" maxlength="80" placeholder="e.g. Billing API (staging)" autocomplete="off" />' +
+            '<div class="form-text" style="margin-top:.4rem">Inbox key / username: <span class="mono" id="ni-slug">—</span></div>',
+            '<button type="button" class="btn" data-close>Cancel</button><button type="button" class="btn btn-primary" data-action="create-inbox"><i class="i i-check"></i> Create</button>');
+        var input = $('ni-name');
+        input.addEventListener('input', function () { $('ni-slug').textContent = slugify(input.value) || '—'; });
+        modal.addEventListener('keydown', function (e) { if (e.key === 'Enter') createInbox(); });
+        input.focus();
+    }
+
+    // Mirrors InboxSlug.Normalize on the server (preview only; the server decides).
+    function slugify(v) {
+        return (v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+            .replace(/[^a-z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^[-._]+|[-._]+$/g, '').slice(0, 64);
+    }
+
+    function createInbox() {
+        var name = $('ni-name').value.trim();
+        if (!slugify(name)) { toast('Enter a name with at least one letter or digit', 'error'); return; }
+        fetch('api/inboxes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name }) })
+            .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, status: r.status, body: b }; }); })
+            .then(function (res) {
+                if (!res.ok && res.status !== 409) throw new Error(res.body.error || res.status);
+                var inbox = res.ok ? res.body : res.body.inbox;
+                return loadInboxes().then(function () {
+                    setInbox(inbox.slug);
+                    openModal(res.ok ? 'Inbox created' : 'Inbox already exists', 'i-check',
+                        '<p style="margin-top:0"><strong>' + esc(inbox.name) + '</strong> is ready. Point your app at it with these settings:</p>' + credentialsHtml(inbox.slug),
+                        '<button type="button" class="btn btn-primary" data-close>Done</button>');
+                });
+            })
+            .catch(function (e) { toast('Could not create inbox: ' + e.message, 'error'); });
+    }
+
+    function openInboxSettings() {
+        var inbox = inboxBySlug(state.inbox);
+        if (!inbox) return;
+        var p = inbox.purge || (state.settings && state.settings.purge) || { enabled: true, maxAgeHours: 72, maxMessages: 1000, intervalMinutes: 15 };
+        var custom = !!inbox.purge;
+        var modal = openModal(inbox.name, 'i-inbox',
+            '<div class="form-section"><div class="form-section-title">Name</div>' +
+            '<input class="form-control" id="ib-name" maxlength="80" value="' + esc(inbox.name) + '" />' +
+            '<div class="form-text" style="margin-top:.4rem">Renaming keeps the key <span class="mono">' + esc(inbox.slug) + '</span>, so apps keep delivering here.</div></div>' +
+            '<div class="form-section"><div class="form-section-title">Connect</div>' + credentialsHtml(inbox.slug) + '</div>' +
+            '<div class="form-section"><div class="form-section-title">Auto-purge</div>' +
+            '<label class="switch"><input type="checkbox" id="ib-custom"' + (custom ? ' checked' : '') + ' /> Use custom rules for this inbox</label>' +
+            '<div id="ib-rules"' + (custom ? '' : ' class="disabled-block"') + '>' +
+            '<label class="switch"><input type="checkbox" id="ib-enabled"' + (p.enabled ? ' checked' : '') + ' /> Automatically delete old messages</label>' +
+            '<div class="form-grid form-grid-2">' +
+            '<div><label class="form-label" for="ib-age">Max age (hours)</label><input class="form-control" id="ib-age" type="number" min="0" value="' + p.maxAgeHours + '" /><div class="form-text">0 = no age limit</div></div>' +
+            '<div><label class="form-label" for="ib-count">Max messages</label><input class="form-control" id="ib-count" type="number" min="0" value="' + p.maxMessages + '" /><div class="form-text">0 = no limit</div></div>' +
+            '</div></div>' +
+            '<div class="form-text" style="margin-top:.6rem">Without custom rules this inbox follows the global rules in <a href="#" data-action="settings">Settings</a>.</div></div>' +
+            '<div class="form-section"><div class="form-section-title">Contents</div>' +
+            '<div class="stat-row"><div><strong>' + inbox.total + '</strong><span>Messages</span></div><div><strong>' + inbox.unread + '</strong><span>Unread</span></div><div><strong>' + fmtSize(inbox.totalBytes) + '</strong><span>Size</span></div></div></div>',
+            (inbox.isDefault ? '' : '<button type="button" class="btn btn-danger" data-action="delete-inbox" style="margin-right:auto"><i class="i i-trash"></i> Delete inbox</button>') +
+            '<button type="button" class="btn" data-close>Cancel</button>' +
+            '<button type="button" class="btn btn-primary" data-action="save-inbox"><i class="i i-check"></i> Save</button>');
+        $('ib-custom').addEventListener('change', function (e) { $('ib-rules').classList.toggle('disabled-block', !e.target.checked); });
+        modal.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') saveInbox(); });
+    }
+
+    function saveInbox() {
+        var slug = state.inbox;
+        var body = {
+            name: $('ib-name').value.trim(),
+            purge: $('ib-custom').checked ? {
+                enabled: $('ib-enabled').checked,
+                maxAgeHours: parseInt($('ib-age').value, 10) || 0,
+                maxMessages: parseInt($('ib-count').value, 10) || 0,
+                intervalMinutes: (state.settings && state.settings.purge.intervalMinutes) || 15,
+            } : null,
+        };
+        if (!body.name) { toast('Name is required', 'error'); return; }
+        api('inboxes/' + encodeURIComponent(slug), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+            .then(function () { closeModal(); toast('Inbox saved'); return loadInboxes(); })
+            .then(updateTitle)
+            .catch(function (e) { toast('Save failed: ' + e.message, 'error'); });
+    }
+
+    function deleteInbox() {
+        var inbox = inboxBySlug(state.inbox);
+        if (!inbox || !confirm('Delete the inbox "' + inbox.name + '" and its ' + inbox.total + ' message(s)? This cannot be undone.')) return;
+        api('inboxes/' + encodeURIComponent(inbox.slug), { method: 'DELETE' })
+            .then(function (r) { closeModal(); toast('Deleted ' + inbox.name + (r.removed ? ' and ' + r.removed + ' message(s)' : '')); return loadInboxes(); })
+            .then(function () { setInbox(''); })
+            .catch(function (e) { toast('Delete failed: ' + e.message, 'error'); });
     }
 
     function loadList(append) {
@@ -94,7 +245,8 @@
         var u = $('count-unread');
         u.textContent = state.stats.unread;
         u.classList.toggle('hot', state.stats.unread > 0);
-        document.title = (state.stats.unread ? '(' + state.stats.unread + ') ' : '') + 'ThisIsATrap';
+        var allUnread = state.inboxes.length ? state.inboxes.reduce(function (s, i) { return s + i.unread; }, 0) : state.stats.unread;
+        document.title = (allUnread ? '(' + allUnread + ') ' : '') + 'ThisIsATrap';
         $('list-meta').textContent = state.total === state.stats.total || state.q || state.folder !== 'all'
             ? state.total + (state.total === 1 ? ' message' : ' messages')
             : '';
@@ -107,6 +259,7 @@
             '<span class="avatar">' + esc(initials(m.from)) + '</span>' +
             '<span style="min-width:0">' +
             '<span class="msg-top"><span class="msg-from">' + esc(displayName(m.from)) + '</span>' +
+            (!state.inbox && multiInbox() ? '<span class="pill pill-accent msg-inbox" title="Inbox">' + esc(inboxName(m.inbox)) + '</span>' : '') +
             (m.attachmentCount ? '<span class="msg-flags" title="' + m.attachmentCount + ' attachment(s)"><i class="i i-paperclip"></i>' + m.attachmentCount + '</span>' : '') +
             '<span class="msg-time" title="' + esc(fmtLong(m.receivedUtc)) + '">' + esc(fmtShort(m.receivedUtc)) + '</span></span>' +
             '<span class="msg-subject" style="display:block">' + (m.subject ? esc(m.subject) : '<em>(no subject)</em>') + '</span>' +
@@ -119,8 +272,10 @@
         if (!state.items.length) {
             var filtered = state.q || state.folder !== 'all';
             listEl.innerHTML = '<div class="empty"><div class="empty-icon"><i class="i ' + (filtered ? 'i-search' : 'i-inbox') + '"></i></div>' +
-                '<h3>' + (filtered ? 'No matching messages' : 'Inbox is empty') + '</h3>' +
-                '<p>' + (filtered ? 'Try a different search or folder.' : 'Point your app’s SMTP settings at this server and send something.') + '</p>' +
+                '<h3>' + (filtered ? 'No matching messages' : state.inbox ? esc(inboxName(state.inbox)) + ' is empty' : 'Inbox is empty') + '</h3>' +
+                '<p>' + (filtered ? 'Try a different search or folder.'
+                    : state.inbox && state.inbox !== 'default' ? 'Send mail with SMTP username <span class="mono">' + esc(state.inbox) + '</span> (any password) to land here.'
+                    : 'Point your app’s SMTP settings at this server and send something.') + '</p>' +
                 (filtered ? '' : '<p><button type="button" class="btn btn-sm" data-action="connect" style="margin-top:.6rem"><i class="i i-info"></i> How to connect</button></p>') +
                 '</div>';
             return;
@@ -165,6 +320,8 @@
             if (m && m.isRead !== read) {
                 m.isRead = read;
                 state.stats.unread += read ? -1 : 1;
+                var ib = inboxBySlug(m.inbox);
+                if (ib) { ib.unread += read ? -1 : 1; renderInboxNav(); }
                 var row = listEl.querySelector('.msg[data-id="' + id + '"]');
                 if (row) row.classList.toggle('read', read);
                 renderCounts();
@@ -192,6 +349,7 @@
 
         var rows = [
             ['From', d.from], ['To', d.to], ['Cc', d.cc], ['Bcc', d.bcc], ['Reply-To', d.replyTo],
+            ['Inbox', multiInbox() ? d.inboxName : ''],
         ].filter(function (r) { return r[1]; }).map(function (r) { return '<dt>' + r[0] + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('');
         var envelope = '<dt>Envelope from</dt><dd class="mono">' + esc(d.envelopeFrom || '—') + '</dd>' +
             '<dt>Envelope to</dt><dd class="mono">' + esc(d.envelopeTo || '—') + '</dd>' +
@@ -307,6 +465,7 @@
         if (!m.isRead) state.stats.unread--;
         state.stats.totalBytes -= m.size;
         renderList(); renderCounts();
+        reloadInboxesSoon();
     }
 
     function clearSelection() {
@@ -328,7 +487,7 @@
         var el = document.createElement('div');
         el.className = 'sm-toast clickable';
         el.innerHTML = '<span class="avatar">' + esc(initials(m.from)) + '</span>' +
-            '<div class="toast-body"><div class="toast-title">New message' + (m.attachmentCount ? ' · ' + m.attachmentCount + ' attachment' + (m.attachmentCount > 1 ? 's' : '') : '') + '</div>' +
+            '<div class="toast-body"><div class="toast-title">New message' + (multiInbox() ? ' · ' + esc(inboxName(m.inbox)) : '') + (m.attachmentCount ? ' · ' + m.attachmentCount + ' attachment' + (m.attachmentCount > 1 ? 's' : '') : '') + '</div>' +
             '<div class="toast-line"><strong>' + esc(displayName(m.from)) + '</strong></div>' +
             '<div class="toast-line">' + (m.subject ? esc(m.subject) : '<em>(no subject)</em>') + '</div>' +
             '<div class="toast-line sub">To: ' + esc(m.to) + '</div></div>' +
@@ -336,7 +495,11 @@
         el.addEventListener('click', function (e) {
             dismiss(el);
             if (e.target.closest('.toast-close')) return;
-            if (state.folder !== 'all' || state.q) { setFolder('all', true); $('search').value = ''; state.q = ''; loadList().then(function () { select(m.id); }); }
+            var outOfScope = state.inbox && state.inbox !== m.inbox;
+            if (state.view !== 'mail' || outOfScope || state.folder !== 'all' || state.q) {
+                setFolder('all', true); $('search').value = ''; state.q = '';
+                (outOfScope ? setInbox(m.inbox) : loadList()).then(function () { select(m.id); });
+            }
             else select(m.id);
         });
         showToast(el, 7000);
@@ -368,9 +531,11 @@
         es.onmessage = function (e) {
             var ev; try { ev = JSON.parse(e.data); } catch (err) { return; }
             if (ev.type === 'message') onNewMessage(ev.payload);
+            else if (ev.type === 'inboxes') reloadInboxesSoon();
             else if (ev.type === 'deleted') { removeLocal(ev.payload.id); if (state.selectedId === ev.payload.id) clearSelection(); }
             else if (ev.type === 'purged' || ev.type === 'changed') {
-                if (ev.type === 'purged' && ev.payload && ev.payload.removed) toast('Auto-purge removed ' + ev.payload.removed + ' message' + (ev.payload.removed === 1 ? '' : 's'));
+                if (ev.type === 'purged' && ev.payload && ev.payload.removed) toast('Removed ' + ev.payload.removed + ' message' + (ev.payload.removed === 1 ? '' : 's'));
+                reloadInboxesSoon();
                 clearTimeout(listReloadTimer);
                 listReloadTimer = setTimeout(function () {
                     loadList().then(function () {
@@ -382,7 +547,11 @@
     }
 
     function onNewMessage(m) {
+        var ib = inboxBySlug(m.inbox);
+        if (ib) { ib.total++; ib.unread++; ib.totalBytes += m.size; renderInboxNav(); }
+        else reloadInboxesSoon();
         mailToast(m);
+        if (state.inbox && state.inbox !== m.inbox) { renderCounts(); return; }
         state.stats.total++; state.stats.unread++; state.stats.totalBytes += m.size;
         var matchesFolder = state.folder === 'all' || state.folder === 'unread' || (state.folder === 'attachments' && m.attachmentCount > 0);
         if (matchesFolder && !state.q) {
@@ -434,7 +603,8 @@
             var p = s.purge;
             var modal = openModal('Settings & auto-purge', 'i-settings',
                 '<div class="form-section">' +
-                '<div class="form-section-title">Auto-purge</div>' +
+                '<div class="form-section-title">Auto-purge (global rules)</div>' +
+                '<div class="form-text" style="margin:-.2rem 0 .7rem">Apply to every inbox that has no custom rules. The message limit is per inbox.</div>' +
                 '<label class="switch"><input type="checkbox" id="p-enabled"' + (p.enabled ? ' checked' : '') + ' /> Automatically delete old messages</label>' +
                 '<div class="form-grid">' +
                 '<div><label class="form-label" for="p-age">Max age (hours)</label><input class="form-control" id="p-age" type="number" min="0" value="' + p.maxAgeHours + '" /><div class="form-text">0 = keep regardless of age</div></div>' +
@@ -488,6 +658,10 @@
             openModal('How to connect', 'i-info',
                 '<p style="margin-top:0">Point any app’s SMTP settings at this server. Every message is accepted and shown here. <strong>Nothing is ever delivered to real recipients.</strong> Any username and password are accepted, or you can use none. TLS isn’t needed.</p>' +
                 '<div class="stat-row"><div><strong class="mono">' + esc(host) + '</strong><span>Host</span></div><div><strong class="mono">' + port + '</strong><span>Port</span></div><div><strong>None</strong><span>TLS / auth</span></div></div>' +
+                '<div class="form-section-title" style="margin-top:1.2rem">Separate inboxes per app</div>' +
+                '<p style="margin:.3rem 0 0">The <strong>SMTP username</strong> picks the inbox: log in as <span class="mono">billing-api</span> (any password) and mail lands in a “billing-api” inbox' +
+                (s.smtp.autoCreateInboxes ? ', created automatically the first time.' : ' (create it first with <a href="#" data-action="new-inbox">New inbox</a>).') +
+                ' Clients that can’t log in can add a <span class="mono">' + esc(s.smtp.routingHeader) + ': billing-api</span> header instead. Anything else goes to <strong>Default</strong>.</p>' +
                 '<div class="form-section-title" style="margin-top:1.2rem">.NET (appsettings / SmtpClient)</div>' +
                 '<pre class="cs-preview">var smtp = new SmtpClient("' + esc(host) + '", ' + port + ') { EnableSsl = false };\nsmtp.Send("app@example.com", "user@example.com", "Hello", "Test body");</pre>' +
                 '<div class="form-section-title" style="margin-top:1.2rem">PowerShell</div>' +
@@ -631,7 +805,7 @@
         if (state.view !== 'mail') showView('mail');
         state.folder = f;
         document.querySelectorAll('[data-folder]').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-folder') === f); });
-        $('folder-title').textContent = folderTitles[f];
+        updateTitle();
         $('nav-toggle').checked = false;
         if (!silent) loadList();
     }
@@ -664,12 +838,20 @@
         if (folder) { setFolder(folder.getAttribute('data-folder')); return; }
         var viewEl = t.closest('[data-view]');
         if (viewEl) { showView(viewEl.getAttribute('data-view')); return; }
+        var inboxEl = t.closest('[data-inbox]');
+        if (inboxEl) { setInbox(inboxEl.getAttribute('data-inbox')); return; }
         if (t.closest('[data-close]') && (t.closest('button[data-close]') || t.classList.contains('sm-modal-backdrop'))) { closeModal(); return; }
 
         var actionEl = t.closest('[data-action]');
         if (!actionEl) return;
+        if (actionEl.tagName === 'A' && actionEl.getAttribute('href') === '#') e.preventDefault();
         switch (actionEl.getAttribute('data-action')) {
-            case 'refresh': loadList(); loadSettings(); break;
+            case 'refresh': loadList(); loadSettings(); loadInboxes(); break;
+            case 'new-inbox': $('nav-toggle').checked = false; openNewInbox(); break;
+            case 'create-inbox': createInbox(); break;
+            case 'inbox-settings': openInboxSettings(); break;
+            case 'save-inbox': saveInbox(); break;
+            case 'delete-inbox': deleteInbox(); break;
             case 'more': loadList(true); break;
             case 'back': clearSelection(); break;
             case 'delete': deleteSelected(); break;
@@ -677,12 +859,14 @@
                 if (state.detail) { markRead(state.detail.id, false); toast('Marked as unread'); }
                 break;
             case 'read-all':
-                api('messages/read-all', { method: 'POST' }).then(function () { toast('All messages marked as read'); });
+                api('messages/read-all' + inboxScope(), { method: 'POST' }).then(function () {
+                    toast(state.inbox ? 'All messages in ' + inboxName(state.inbox) + ' marked as read' : 'All messages marked as read');
+                });
                 break;
             case 'delete-all':
-                if (!state.stats.total) { toast('Mailbox is already empty'); break; }
-                if (confirm('Delete all ' + state.stats.total + ' messages? This cannot be undone.'))
-                    api('messages', { method: 'DELETE' }).then(function (r) { clearSelection(); toast('Deleted ' + r.removed + ' messages'); });
+                if (!state.stats.total) { toast(state.inbox ? inboxName(state.inbox) + ' is already empty' : 'Mailbox is already empty'); break; }
+                if (confirm('Delete all ' + state.stats.total + ' messages' + (state.inbox ? ' in ' + inboxName(state.inbox) : ' in every inbox') + '? This cannot be undone.'))
+                    api('messages' + inboxScope(), { method: 'DELETE' }).then(function (r) { clearSelection(); toast('Deleted ' + r.removed + ' messages'); });
                 break;
             case 'download-all':
                 e.preventDefault();
@@ -715,7 +899,10 @@
     emptyReader();
     setLive(false);
     loadSettings();
-    loadList().then(function () {
+    loadInboxes().then(function () {
+        updateTitle();
+        return loadList();
+    }).then(function () {
         var id = location.hash.slice(1);
         if (/^[0-9a-f]{32}$/.test(id)) select(id);
     });

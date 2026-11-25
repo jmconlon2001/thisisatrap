@@ -3,6 +3,10 @@
     Sends test messages to ThisIsATrap (HTML body, inline image, and attachments) using raw SMTP.
 .EXAMPLE
     .\Send-TestMail.ps1 -Server localhost -Port 25 -Count 3
+.EXAMPLE
+    .\Send-TestMail.ps1 -User billing-api -Password x      # lands in the "billing-api" inbox (SMTP login)
+.EXAMPLE
+    .\Send-TestMail.ps1 -Inbox billing-api                 # same, via the X-Trap-Inbox header (no login)
 #>
 param(
     [string]$Server = 'localhost',
@@ -13,7 +17,8 @@ param(
     [string]$Cc = 'qa-team@example.com',
     [string]$Bcc = 'audit@example.com',
     [string]$User,
-    [string]$Password
+    [string]$Password,
+    [string]$Inbox
 )
 
 $ErrorActionPreference = 'Stop'
@@ -64,7 +69,7 @@ To: $To
 Cc: $Cc
 Subject: Build #$((Get-Random -Minimum 1000 -Maximum 9999)) succeeded ($n of $Count, $stamp)
 Date: $((Get-Date).ToString('r'))
-Message-ID: <$([guid]::NewGuid())@example.com>
+Message-ID: <$([guid]::NewGuid())@example.com>$(if ($Inbox) { "`r`nX-Trap-Inbox: $Inbox" })
 MIME-Version: 1.0
 Content-Type: multipart/mixed; boundary="$boundary"
 

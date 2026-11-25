@@ -373,6 +373,20 @@ button { font: inherit; }
 .toast-close { background: none; border: 0; color: #5d6a85; cursor: pointer; padding: 0; line-height: 1; }
 .toast-close:hover { color: #fff; }
 
+/* ---------- Inboxes ---------- */
+.nav-section-row { display: flex; align-items: center; justify-content: space-between; }
+.nav-add { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; border: 1px solid rgba(255, 255, 255, .12); background: rgba(255, 255, 255, .04); color: var(--sm-sidebar-text); cursor: pointer; padding: 0; }
+.nav-add:hover { color: #fff; background: rgba(129, 140, 248, .25); border-color: rgba(129, 140, 248, .5); }
+.nav-add .i { width: 14px; height: 14px; }
+.nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#inbox-nav { display: flex; flex-direction: column; gap: 2px; max-height: 40vh; overflow-y: auto; }
+.msg-inbox { font-size: .66rem; padding: .05rem .45rem; max-width: 9rem; overflow: hidden; text-overflow: ellipsis; flex: none; }
+#inbox-settings-btn { margin-left: auto; }
+.pane-header h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.disabled-block { opacity: .45; pointer-events: none; }
+.form-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cred-row strong { font-size: .95rem; overflow-wrap: anywhere; }
+
 /* ---------- Status & health view ---------- */
 .dot-warn { background: var(--sm-warning); }
 .nav-health { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: transparent; }
@@ -458,6 +472,7 @@ button { font: inherit; }
 }
 
 /* ---------- Icon set ---------- */
+.i-plus{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222.4%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M12 5v14M5 12h14%22/%3E%3C/svg%3E")}
 .i-menu{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M3 12h18M3 6h18M3 18h18%22/%3E%3C/svg%3E")}
 .i-gauge{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M12 14l4-4%22/%3E%3Cpath d=%22M3.34 19a10 10 0 1 1 17.32 0%22/%3E%3C/svg%3E")}
 .i-activity{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M22 12h-4l-3 9L9 3l-3 9H2%22/%3E%3C/svg%3E")}

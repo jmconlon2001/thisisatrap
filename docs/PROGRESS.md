@@ -8,8 +8,8 @@ Working branch: `feature/mailtrap-parity`. The plan adds the features ThisIsATra
 | 1 | Test projects, coverage gate, git hooks, CI | Done |
 | 2 | Rebrand to **ThisIsATrap** (UI, code, config, Docker, IIS; legacy `MailTrap` config, database and IIS site are migrated) | Done |
 | 3 | Health and status: `/healthz`, `/readyz`, `/api/status`, a status page, Docker and IIS health checks | Done |
-| 4 | Multiple inboxes | Next |
-| 5 | Responsive preview | |
+| 4 | Multiple inboxes | Done |
+| 5 | Responsive preview | Next |
 | 6 | HTML check (caniemail) | |
 | 7 | Spam & content analysis | |
 | 8 | Link & image checker | |

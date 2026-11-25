@@ -35,7 +35,7 @@ public sealed class SmtpListenerService(
             .Build();
 
         var services = new SmtpServer.ComponentModel.ServiceProvider();
-        services.Add(new TrapMessageStore(store, events, stats, log));
+        services.Add(new TrapMessageStore(store, events, stats, o.AutoCreateInboxes, log));
         services.Add(new AcceptAnyUser());
 
         // IIS can briefly run the old and new worker side by side during a recycle, so the port
@@ -72,7 +72,7 @@ public sealed class SmtpListenerService(
             => Task.FromResult(true);
     }
 
-    private sealed class TrapMessageStore(MailStore store, EventHub events, Health.RuntimeStats stats, ILogger log) : MessageStore
+    private sealed class TrapMessageStore(MailStore store, EventHub events, Health.RuntimeStats stats, bool autoCreateInboxes, ILogger log) : MessageStore
     {
         public override async Task<SmtpResponse> SaveAsync(ISessionContext context, IMessageTransaction transaction, ReadOnlySequence<byte> buffer, CancellationToken cancellationToken)
         {
@@ -90,6 +90,17 @@ public sealed class SmtpListenerService(
                 var clientIp = context.Properties.TryGetValue(EndpointListener.RemoteEndPointKey, out var ep) && ep is IPEndPoint ip
                     ? ip.Address.ToString() : "";
 
+                // Inbox routing: SMTP username first, then the X-Trap-Inbox header, else Default.
+                var routingKey = context.Authentication is { IsAuthenticated: true, User: { Length: > 0 } user }
+                    ? user
+                    : message.Headers[Inbox.RoutingHeader];
+                var (inbox, created) = store.ResolveInbox(routingKey, autoCreateInboxes);
+                if (created)
+                {
+                    log.LogInformation("Created inbox {Slug}", inbox.Slug);
+                    events.Publish("inboxes");
+                }
+
                 var from = MessageParser.Addresses(message.From);
                 var to = MessageParser.Addresses(message.To);
                 var record = new MessageRecord(
@@ -105,14 +116,15 @@ public sealed class SmtpListenerService(
                     false,
                     envelopeFrom,
                     envelopeTo,
-                    clientIp);
+                    clientIp,
+                    inbox.Id);
 
                 await store.AddAsync(record, raw, cancellationToken);
                 stats.MessageReceived();
-                log.LogInformation("Trapped message {Id} from {From} to {To}: {Subject}", record.Id, record.From, record.To, record.Subject);
+                log.LogInformation("Trapped message {Id} in {Inbox} from {From} to {To}: {Subject}", record.Id, inbox.Slug, record.From, record.To, record.Subject);
 
                 events.Publish("message", new MessageSummary(record.Id, record.ReceivedUtc, record.From, record.To, record.Subject,
-                    record.Preview, record.Size, record.AttachmentCount, false));
+                    record.Preview, record.Size, record.AttachmentCount, false, inbox.Slug));
                 return SmtpResponse.Ok;
             }
             catch (Exception ex)

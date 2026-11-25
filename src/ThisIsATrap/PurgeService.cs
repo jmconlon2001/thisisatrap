@@ -1,6 +1,9 @@
 namespace ThisIsATrap;
 
-/// <summary>Periodically removes old messages according to the user-editable purge rules.</summary>
+/// <summary>
+/// Periodically removes old messages. Each inbox uses its own purge rules when it has them,
+/// otherwise the global rules. The check interval is always the global one.
+/// </summary>
 public sealed class PurgeService(MailStore store, EventHub events, ILogger<PurgeService> log) : BackgroundService
 {
     private readonly SemaphoreSlim _wake = new(0);
@@ -11,9 +14,10 @@ public sealed class PurgeService(MailStore store, EventHub events, ILogger<Purge
     /// <summary>Re-evaluate now (called after settings change so a shorter interval takes effect immediately).</summary>
     public void Wake() => _wake.Release();
 
+    /// <summary>"Run purge now": applies every inbox's rules even when automatic purging is switched off.</summary>
     public int RunOnce()
     {
-        var removed = store.Purge(store.GetPurgeSettings() with { Enabled = true });
+        var removed = PurgeAll(force: true);
         Record(removed);
         return removed;
     }
@@ -22,17 +26,26 @@ public sealed class PurgeService(MailStore store, EventHub events, ILogger<Purge
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            var settings = store.GetPurgeSettings();
-            if (settings.Enabled)
-            {
-                try { Record(store.Purge(settings)); }
-                catch (Exception ex) { log.LogError(ex, "Auto-purge failed"); }
-            }
+            var global = store.GetPurgeSettings();
+            try { Record(PurgeAll(force: false)); }
+            catch (Exception ex) { log.LogError(ex, "Auto-purge failed"); }
 
-            var interval = TimeSpan.FromMinutes(Math.Clamp(settings.IntervalMinutes, 1, 24 * 60));
+            var interval = TimeSpan.FromMinutes(Math.Clamp(global.IntervalMinutes, 1, 24 * 60));
             try { await _wake.WaitAsync(interval, stoppingToken); }
             catch (OperationCanceledException) { return; }
         }
+    }
+
+    private int PurgeAll(bool force)
+    {
+        var global = store.GetPurgeSettings();
+        var removed = 0;
+        foreach (var inbox in store.ListInboxes())
+        {
+            var rules = inbox.Purge ?? global;
+            if (rules.Enabled || force) removed += store.Purge(rules, inbox.Id);
+        }
+        return removed;
     }
 
     private void Record(int removed)

@@ -37,6 +37,7 @@ ThisIsATrap is a **real SMTP server that never delivers anything**. Point your a
 - [Deploy to IIS](#deploy-to-iis)
 - [Run with Docker](#run-with-docker)
 - [Connecting your apps](#connecting-your-apps)
+- [Inboxes](#inboxes)
 - [Auto-purge](#auto-purge)
 - [Status & health](#status--health)
 - [Configuration](#configuration)
@@ -150,6 +151,27 @@ smtplib.SMTP("trap-host", 25).sendmail("app@example.com", ["user@example.com"], 
 
 Recipients that are in the SMTP envelope but not in the `To`/`Cc` headers are shown as **Bcc**, so you can check who actually got a copy.
 
+## Inboxes
+
+Give each app, team or environment its own inbox. The **SMTP username** decides where a message lands:
+
+1. The client logs in with username `billing-api` (any password) → the **billing-api** inbox.
+2. There's no login, but the message has an `X-Trap-Inbox: billing-api` header → the same inbox.
+3. Anything else goes to **Default**.
+
+The first message for an unknown username creates the inbox automatically. To allow only inboxes you've created yourself, set `AutoCreateInboxes` to `false`; mail for unknown names then goes to Default. Usernames are normalized into keys: `Billing API` and `billing-api` are the same inbox.
+
+In the sidebar:
+- **All inboxes** shows everything, with an inbox label on each message.
+- Clicking an inbox scopes the list, search, unread count, **Mark all read** and **Delete all** to that inbox.
+- The **+** button creates an inbox and shows the credentials to use.
+- The gear icon on an inbox lets you rename it, set its own auto-purge rules, or delete it with its mail. Renaming keeps the key, so apps keep delivering to it.
+
+```powershell
+.\tools\Send-TestMail.ps1 -User billing-api -Password x   # routed by SMTP login
+.\tools\Send-TestMail.ps1 -Inbox billing-api               # routed by header
+```
+
 ## Auto-purge
 
 Open **Settings & auto-purge** in the sidebar.
@@ -161,7 +183,7 @@ Open **Settings & auto-purge** in the sidebar.
 | Max messages | `1000` | Keep only the newest N (`0` = no count limit) |
 | Check every (min) | `15` | How often the rules run |
 
-Rules are stored in the database, so they survive restarts and redeploys. Changes take effect immediately. **Run purge now** applies the rules on demand, and the trash icon in the top bar deletes everything.
+These global rules apply to every inbox that doesn't have custom rules (set those from the inbox's gear icon). **Max messages** is counted per inbox. Rules are stored in the database, so they survive restarts and redeploys. Changes take effect immediately. **Run purge now** applies every inbox's rules on demand, and the trash icon in the top bar deletes everything in the current inbox.
 
 ## Status & health
 
@@ -202,6 +224,7 @@ Static settings live in `appsettings.json` under `ThisIsATrap`. The deploy scrip
 | Key | Description |
 | --- | --- |
 | `SmtpPort` | SMTP listen port (all interfaces) |
+| `AutoCreateInboxes` | `true`: an unknown SMTP username creates an inbox. `false`: such mail goes to Default |
 | `PublicSmtpPort` | Optional. The port shown in the UI when clients reach SMTP on a different port than it listens on, for example behind a Docker port mapping |
 | `ServerName` | Name announced in the SMTP greeting |
 | `MaxMessageSizeMb` | Size limit advertised via `SIZE` and enforced |
@@ -243,15 +266,19 @@ Everything the UI does is available over plain HTTP, which is handy for automate
 
 | Method | Path | |
 | --- | --- | --- |
-| `GET` | `/api/messages?q=&unread=&attachments=&skip=&take=` | List and search (newest first) |
+| `GET` | `/api/messages?q=&unread=&attachments=&inbox=&skip=&take=` | List and search (newest first), optionally in one inbox |
 | `GET` | `/api/messages/{id}` | Full detail: headers, text, HTML, attachments |
 | `GET` | `/api/messages/{id}/html` | Rendered HTML body |
 | `GET` | `/api/messages/{id}/raw[?download=true]` | Raw source / `.eml` download |
 | `GET` | `/api/messages/{id}/attachments/{index}[?download=true]` | Attachment content |
 | `POST` | `/api/messages/{id}/read?read=true\|false` | Mark read or unread |
-| `POST` | `/api/messages/read-all` | Mark everything read |
+| `POST` | `/api/messages/read-all[?inbox=]` | Mark everything read (in one inbox) |
 | `DELETE` | `/api/messages/{id}` | Delete one |
-| `DELETE` | `/api/messages` | Delete all |
+| `DELETE` | `/api/messages[?inbox=]` | Delete all (in one inbox) |
+| `GET` | `/api/inboxes` | Inboxes with message and unread counts |
+| `POST` | `/api/inboxes` | Create an inbox: `{ "name": "Billing API" }` |
+| `GET` / `PUT` | `/api/inboxes/{slug}` | Read, or rename and set custom purge rules: `{ "name", "purge": {...} or null }` |
+| `DELETE` | `/api/inboxes/{slug}` | Delete an inbox and its mail (not Default) |
 | `GET` | `/api/settings` | Purge rules, SMTP status, storage stats |
 | `PUT` | `/api/settings/purge` | Update purge rules |
 | `POST` | `/api/purge` | Run purge now |

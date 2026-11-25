@@ -8,6 +8,12 @@ public sealed class TrapOptions
     /// <summary>Section name used before the rename. Still read so older appsettings / env vars keep working.</summary>
     public const string LegacySection = "MailTrap";
 
+    /// <summary>
+    /// Mail sent with an SMTP username (or an X-Trap-Inbox header) that matches no inbox creates one.
+    /// When false, such mail goes to the Default inbox instead.
+    /// </summary>
+    public bool AutoCreateInboxes { get; set; } = true;
+
     /// <summary>Port the SMTP listener binds to. 25 is the standard SMTP port.</summary>
     public int SmtpPort { get; set; } = 25;
 
