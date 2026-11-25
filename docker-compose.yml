@@ -2,6 +2,7 @@ services:
   thisisatrap:
     build: .
     image: thisisatrap:latest
+    pull_policy: build   # local image: always build, never try to pull it from a registry
     container_name: thisisatrap
     restart: unless-stopped
     ports:
