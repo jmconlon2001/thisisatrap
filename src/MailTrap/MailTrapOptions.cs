@@ -8,6 +8,12 @@ public sealed class MailTrapOptions
     /// <summary>Port the SMTP listener binds to. 25 is the standard SMTP port.</summary>
     public int SmtpPort { get; set; } = 25;
 
+    /// <summary>
+    /// Port clients should connect to, when it differs from <see cref="SmtpPort"/> (e.g. a Docker
+    /// container listening on 2525 published as 25 on the host). Only affects what the UI shows.
+    /// </summary>
+    public int? PublicSmtpPort { get; set; }
+
     /// <summary>Host name announced in the SMTP greeting.</summary>
     public string ServerName { get; set; } = Environment.MachineName;
 

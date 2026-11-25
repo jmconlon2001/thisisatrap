@@ -103,7 +103,7 @@ api.MapGet("/settings", (MailStore store, Microsoft.Extensions.Options.IOptions<
     purge = store.GetPurgeSettings(),
     lastPurgeUtc = PurgeService.LastRunUtc,
     lastPurgeRemoved = PurgeService.LastRemoved,
-    smtp = new { port = options.Value.SmtpPort, host = options.Value.ServerName, status = SmtpListenerService.Status, maxMessageSizeMb = options.Value.MaxMessageSizeMb },
+    smtp = new { port = options.Value.PublicSmtpPort ?? options.Value.SmtpPort, listenPort = options.Value.SmtpPort, host = options.Value.ServerName, status = SmtpListenerService.Status, maxMessageSizeMb = options.Value.MaxMessageSizeMb },
     dataPath = store.DataPath,
     stats = store.Stats(),
     connectedClients = events.ConnectedClients,

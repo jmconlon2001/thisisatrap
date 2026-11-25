@@ -5,6 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/.NET-10-512BD4?style=flat-square" alt=".NET 10">
   <img src="https://img.shields.io/badge/host-IIS-0078D4?style=flat-square" alt="IIS">
+  <img src="https://img.shields.io/badge/docker-ready-2496ED?style=flat-square" alt="Docker">
   <img src="https://img.shields.io/badge/deepspace-enabled-purple?style=flat-square" alt="Theme">
 </p>
 
@@ -34,6 +35,7 @@ MailTrap is a **real SMTP server that never delivers anything**. Point your apps
 
 - [Quick start](#quick-start)
 - [Deploy to IIS](#deploy-to-iis)
+- [Run with Docker](#run-with-docker)
 - [Connecting your apps](#connecting-your-apps)
 - [Auto-purge](#auto-purge)
 - [Configuration](#configuration)
@@ -90,6 +92,33 @@ The script is idempotent. Re-run it to upgrade; stored mail and settings are kep
 | `-SmtpPort` | `25` | SMTP listen port |
 | `-MaxMessageSizeMb` | `50` | Larger messages are rejected |
 | `-SkipFirewall` | off | Don't create firewall rules |
+
+## Run with Docker
+
+Runs on any Linux Docker host (or Docker Desktop). From the repo root:
+
+```bash
+docker compose up -d --build
+```
+
+- Web UI: http://localhost:8025
+- SMTP: `localhost:25`
+- Mail and purge settings live in the `mailtrap-data` volume, so they survive rebuilds.
+
+Or without Compose:
+
+```bash
+docker build -t mailtrap .
+docker run -d --name mailtrap --restart unless-stopped \
+  -p 8025:8080 -p 25:2525 \
+  -e MailTrap__PublicSmtpPort=25 \
+  -v mailtrap-data:/data \
+  mailtrap
+```
+
+The container runs as a non-root user, which can't bind ports below 1024, so inside the container the web UI listens on `8080` and SMTP on `2525`. Map them to whatever host ports you like. If port 25 is already taken on the host, use something like `-p 2525:2525` and set `MailTrap__PublicSmtpPort=2525`. `PublicSmtpPort` only changes the port the UI tells people to connect to.
+
+Any [configuration](#configuration) key can be set with an environment variable of the form `MailTrap__<Key>`.
 
 ## Connecting your apps
 
@@ -149,6 +178,7 @@ Static settings live in `appsettings.json` under `MailTrap`. The deploy script w
 | Key | Description |
 | --- | --- |
 | `SmtpPort` | SMTP listen port (all interfaces) |
+| `PublicSmtpPort` | Optional. The port shown in the UI when clients reach SMTP on a different port than it listens on, for example behind a Docker port mapping |
 | `ServerName` | Name announced in the SMTP greeting |
 | `MaxMessageSizeMb` | Size limit advertised via `SIZE` and enforced |
 | `DataPath` | Folder for `mailtrap.db` and `messages/*.eml`. Relative paths resolve against the app folder. |
@@ -180,6 +210,7 @@ Static settings live in `appsettings.json` under `MailTrap`. The deploy script w
 | `src/MailTrap/PurgeService.cs` | Scheduled auto-purge |
 | `src/MailTrap/wwwroot/` | Web client |
 | `deploy/Deploy-MailTrap.ps1` | IIS install and upgrade |
+| `Dockerfile`, `docker-compose.yml` | Container build and run |
 | `tools/Send-TestMail.ps1` | Test mail sender (raw SMTP, optional AUTH) |
 
 ## HTTP API
