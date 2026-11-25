@@ -32,7 +32,7 @@ jobs:
         run: ./tools/Test-Coverage.ps1 -Configuration Release -NoBuild -Threshold 80
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.os }}
           path: TestResults/
