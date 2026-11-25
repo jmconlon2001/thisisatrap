@@ -415,7 +415,17 @@
         var base = 'api/messages/' + d.id;
         switch (state.tab) {
             case 'html':
-                body.innerHTML = '<iframe class="html-frame" title="Message body" sandbox="allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" src="' + base + '/html"></iframe>';
+                var size = previewSizes[state.preview] ? state.preview : 'desktop';
+                body.innerHTML = '<div class="preview-bar"><div class="seg" role="group" aria-label="Preview width">' +
+                    Object.keys(previewSizes).map(function (k) {
+                        var p = previewSizes[k];
+                        return '<button type="button" data-preview="' + k + '" class="' + (k === size ? 'active' : '') + '" aria-pressed="' + (k === size) + '" title="' + p.title + '">' +
+                            '<i class="i ' + p.icon + '"></i> ' + p.label + '</button>';
+                    }).join('') +
+                    '</div><span class="meta" id="preview-width">' + previewSizes[size].hint + '</span></div>' +
+                    '<div class="preview-stage' + (size === 'desktop' ? '' : ' device ' + size) + '" id="preview-stage">' +
+                    '<iframe class="html-frame" title="Message body" sandbox="allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" src="' + base + '/html"></iframe></div>';
+                if (size === 'desktop') setPreviewHint();
                 break;
             case 'text':
                 body.innerHTML = d.text ? '<pre class="text-view">' + linkify(esc(d.text)) + '</pre>' : '<div class="empty"><p>This message has no plain-text part.</p></div>';
@@ -437,6 +447,35 @@
                 });
                 break;
         }
+    }
+
+    // ---------- responsive preview ----------
+    var previewSizes = {
+        desktop: { label: 'Desktop', icon: 'i-monitor', title: 'Full width of the reading pane', hint: '' },
+        tablet: { label: 'Tablet', icon: 'i-tablet', title: 'Tablet width (768 px)', hint: '768 px' },
+        mobile: { label: 'Mobile', icon: 'i-phone', title: 'Phone width (375 px)', hint: '375 px' },
+    };
+    try { state.preview = localStorage.getItem('mt-preview') || 'desktop'; } catch (err) { state.preview = 'desktop'; }
+
+    function setPreview(size) {
+        state.preview = size;
+        try { localStorage.setItem('mt-preview', size); } catch (err) { }
+        var stage = $('preview-stage');
+        if (!stage) return;
+        stage.className = 'preview-stage' + (size === 'desktop' ? '' : ' device ' + size);
+        document.querySelectorAll('[data-preview]').forEach(function (b) {
+            var on = b.getAttribute('data-preview') === size;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-pressed', on);
+        });
+        $('preview-width').textContent = previewSizes[size].hint;
+        if (size === 'desktop') setPreviewHint();
+    }
+    function setPreviewHint() {
+        requestAnimationFrame(function () {
+            var f = document.querySelector('#preview-stage .html-frame'), hint = $('preview-width');
+            if (f && hint) hint.textContent = Math.round(f.getBoundingClientRect().width) + ' px';
+        });
     }
 
     function linkify(escaped) {
@@ -838,6 +877,8 @@
         if (folder) { setFolder(folder.getAttribute('data-folder')); return; }
         var viewEl = t.closest('[data-view]');
         if (viewEl) { showView(viewEl.getAttribute('data-view')); return; }
+        var previewEl = t.closest('[data-preview]');
+        if (previewEl) { setPreview(previewEl.getAttribute('data-preview')); return; }
         var inboxEl = t.closest('[data-inbox]');
         if (inboxEl) { setInbox(inboxEl.getAttribute('data-inbox')); return; }
         if (t.closest('[data-close]') && (t.closest('button[data-close]') || t.classList.contains('sm-modal-backdrop'))) { closeModal(); return; }

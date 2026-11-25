@@ -15,7 +15,7 @@ ThisIsATrap is a **real SMTP server that never delivers anything**. Point your a
 
 - **Looks like a real mail server to clients.** It speaks proper SMTP (EHLO, PIPELINING, 8BITMIME, AUTH PLAIN/LOGIN) and accepts any username and password, or none.
 - **Nothing ever leaves.** There is no relay code at all: messages are written to disk and that's the end of the line.
-- **Web mail client.** The message list has search and unread/attachment filters. The reader has tabs for rendered HTML, plain text, HTML source, headers and the raw message.
+- **Web mail client.** The message list has search and unread/attachment filters. The reader has tabs for rendered HTML, plain text, HTML source, headers and the raw message. The HTML preview can be switched between **desktop, tablet (768 px) and mobile (375 px)** widths to check how a responsive email reflows.
 - **Every attachment.** You can view or download each file, including inline `cid:` images, and download the whole message as `.eml`.
 - **Live.** New mail appears instantly with a toast. The unread count shows in the sidebar and the browser tab title.
 - **Auto-purge you control.** Set a max age, a max message count, and how often the purge runs, all from the UI. There's also a "Run purge now" button.

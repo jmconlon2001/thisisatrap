@@ -320,6 +320,22 @@ button { font: inherit; }
 .tab:disabled { opacity: .4; cursor: default; }
 .tab-body { flex: 1; min-height: 360px; display: flex; flex-direction: column; }
 .html-frame { flex: 1; width: 100%; min-height: 360px; border: 0; background: #fff; }
+
+/* Responsive preview: desktop fills the pane; tablet/phone get a fixed-width "device". */
+.preview-bar { display: flex; align-items: center; gap: .5rem; padding: .5rem 1.1rem; border-bottom: 1px solid var(--sm-border); background: var(--sm-surface-2); flex-wrap: wrap; }
+.preview-bar .meta { color: var(--sm-muted); font-size: .75rem; font-weight: 600; margin-left: auto; font-family: var(--sm-mono); }
+.seg { display: inline-flex; border: 1px solid var(--sm-border); border-radius: 10px; overflow: hidden; background: var(--sm-surface); }
+.seg button { display: inline-flex; align-items: center; gap: .35rem; border: 0; background: none; color: var(--sm-muted); font: inherit; font-size: .78rem; font-weight: 600; padding: .3rem .7rem; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--sm-border); }
+.seg button:hover { color: var(--sm-text); }
+.seg button.active { background: var(--sm-accent-soft); color: var(--sm-accent); }
+[data-bs-theme=dark] .seg button.active { color: #a5b4fc; }
+.seg .i { width: 15px; height: 15px; }
+.preview-stage { flex: 1; display: flex; flex-direction: column; min-height: 360px; }
+.preview-stage.device { align-items: center; padding: 1.25rem; background: repeating-linear-gradient(45deg, var(--sm-surface-2), var(--sm-surface-2) 10px, var(--sm-bg) 10px, var(--sm-bg) 20px); overflow-x: auto; }
+.preview-stage.device .html-frame { flex: 1 0 auto; max-width: none; border: 10px solid #0f172a; border-radius: 26px; box-shadow: var(--sm-shadow-lg); min-height: 640px; }
+.preview-stage.tablet .html-frame { width: 788px; }  /* 768 CSS px + bezel */
+.preview-stage.mobile .html-frame { width: 395px; }  /* 375 CSS px + bezel */
 .code-view {
     flex: 1; margin: 0; padding: 1rem 1.35rem; overflow: auto; white-space: pre-wrap; word-break: break-word;
     font-family: var(--sm-mono); font-size: .8rem; line-height: 1.55; color: var(--sm-text); background: var(--sm-surface-2);
@@ -472,6 +488,9 @@ button { font: inherit; }
 }
 
 /* ---------- Icon set ---------- */
+.i-monitor{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Crect x=%222%22 y=%223%22 width=%2220%22 height=%2214%22 rx=%222%22/%3E%3Cpath d=%22M8 21h8M12 17v4%22/%3E%3C/svg%3E")}
+.i-tablet{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Crect x=%224%22 y=%222%22 width=%2216%22 height=%2220%22 rx=%222%22/%3E%3Cpath d=%22M12 18h.01%22/%3E%3C/svg%3E")}
+.i-phone{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Crect x=%226%22 y=%222%22 width=%2212%22 height=%2220%22 rx=%222%22/%3E%3Cpath d=%22M12 18h.01%22/%3E%3C/svg%3E")}
 .i-plus{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222.4%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M12 5v14M5 12h14%22/%3E%3C/svg%3E")}
 .i-menu{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M3 12h18M3 6h18M3 18h18%22/%3E%3C/svg%3E")}
 .i-gauge{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M12 14l4-4%22/%3E%3Cpath d=%22M3.34 19a10 10 0 1 1 17.32 0%22/%3E%3C/svg%3E")}
