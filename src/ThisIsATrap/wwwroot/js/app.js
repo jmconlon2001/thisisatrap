@@ -379,6 +379,7 @@
 
         var tabs = [
             ['html', 'HTML', d.hasHtml], ['text', 'Plain text', !!d.text], ['source', 'HTML source', d.hasHtml],
+            ['check', 'HTML check', d.hasHtml],
             ['headers', 'Headers (' + d.headers.length + ')', true], ['raw', 'Raw', true],
         ].map(function (t) {
             return '<button type="button" class="tab' + (state.tab === t[0] ? ' active' : '') + '" data-tab="' + t[0] + '"' + (t[2] ? '' : ' disabled') + '>' + t[1] + '</button>';
@@ -433,6 +434,9 @@
             case 'source':
                 body.innerHTML = '<pre class="code-view">' + esc(d.html || '') + '</pre>';
                 break;
+            case 'check':
+                loadAnalysis(d.id, 'html-check', renderHtmlCheck);
+                break;
             case 'headers':
                 body.innerHTML = '<table class="headers-table"><tbody>' + d.headers.map(function (h) {
                     return '<tr><td>' + esc(h.name) + '</td><td>' + esc(h.value) + '</td></tr>';
@@ -447,6 +451,61 @@
                 });
                 break;
         }
+    }
+
+    // ---------- analysis tabs (HTML check, spam, links) ----------
+    var analysisCache = {};   // "<kind>:<id>" → result
+    function loadAnalysis(id, kind, render, opts) {
+        var key = kind + ':' + id, body = $('tab-body');
+        if (analysisCache[key] && !(opts && opts.refresh)) { render(analysisCache[key], body); return; }
+        body.innerHTML = '<div class="empty"><p>Analyzing…</p></div>';
+        api('messages/' + id + '/' + kind, opts && opts.method ? { method: opts.method } : undefined).then(function (r) {
+            analysisCache[key] = r;
+            if (state.detail && state.detail.id === id && $('tab-body')) render(r, $('tab-body'));
+        }).catch(function (e) {
+            if (state.detail && state.detail.id === id) $('tab-body').innerHTML = '<div class="empty"><div class="empty-icon"><i class="i i-alert"></i></div><h3>Analysis failed</h3><p>' + esc(e.message) + '</p></div>';
+        });
+    }
+
+    function scoreClass(score) { return score >= 90 ? 'ok' : score >= 70 ? 'warn' : 'bad'; }
+    function scoreRing(score, label) {
+        return '<div class="score-ring ' + scoreClass(score) + '" style="--p:' + score + '"><div><strong>' + Math.round(score) + '%</strong><span>' + label + '</span></div></div>';
+    }
+    var supportLabel = { y: 'Supported', a: 'Partial', n: 'Not supported', u: 'Unknown' };
+
+    function renderHtmlCheck(r, body) {
+        if (!r.hasHtml) { body.innerHTML = '<div class="empty"><p>This message has no HTML part.</p></div>'; return; }
+        var clients = r.clients.map(function (c) {
+            return '<div class="client-score ' + scoreClass(c.score) + '"><div class="client-name">' + esc(c.name) + '</div>' +
+                '<div class="client-pct">' + Math.round(c.score) + '%</div>' +
+                '<div class="meter"><span class="' + (c.score < 70 ? 'bad' : c.score < 90 ? 'warn' : '') + '" style="width:' + c.score + '%"></span></div>' +
+                '<div class="client-meta">' + (c.unsupported ? c.unsupported + ' unsupported' : '') + (c.unsupported && c.partial ? ' · ' : '') + (c.partial ? c.partial + ' partial' : '') + (!c.unsupported && !c.partial ? 'All supported' : '') + '</div></div>';
+        }).join('');
+        var rows = r.features.map(function (f) {
+            var chips = f.clients.map(function (c) {
+                var detail = c.platforms.map(function (p) { return p.name + ': ' + supportLabel[p.support] + (p.notes.length ? ' (' + p.notes.join(' ') + ')' : ''); }).join('\n');
+                return '<span class="support-chip s-' + c.support + '" title="' + esc(detail) + '">' + esc(c.name) + '</span>';
+            }).join('');
+            var notes = [];
+            f.clients.forEach(function (c) { c.platforms.forEach(function (p) { p.notes.forEach(function (n) { if (notes.indexOf(n) < 0) notes.push(n); }); }); });
+            return '<details class="feature-row"><summary>' +
+                '<span class="feature-score ' + scoreClass(f.score) + '">' + Math.round(f.score) + '%</span>' +
+                '<span class="feature-main"><strong>' + esc(f.title) + '</strong><span class="mono">' + esc(f.sample) + '</span></span>' +
+                '<span class="pill pill-muted">' + esc(f.category.toUpperCase()) + '</span>' +
+                '<span class="feature-count" title="Occurrences">×' + f.occurrences + '</span></summary>' +
+                '<div class="feature-detail"><div class="support-chips">' + chips + '</div>' +
+                (notes.length ? '<ul class="feature-notes">' + notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>' : '') +
+                '<a href="' + esc(f.url) + '" target="_blank" rel="noopener noreferrer">Full support table on caniemail.com <i class="i i-external"></i></a></div></details>';
+        }).join('');
+        body.innerHTML = '<div class="analysis">' +
+            '<div class="analysis-head">' + scoreRing(r.score, 'support') +
+            '<div><h3>HTML &amp; CSS support across email clients</h3>' +
+            '<p>' + r.features.length + ' feature' + (r.features.length === 1 ? '' : 's') + ' detected. The score is the share of client/platform combinations that render them (partial support counts half).</p>' +
+            '<p class="form-text">Data: <a href="https://www.caniemail.com" target="_blank" rel="noopener noreferrer">caniemail.com</a> (MIT), updated ' + esc((r.dataUpdated || '').slice(0, 10)) + '.</p></div></div>' +
+            '<div class="client-grid">' + clients + '</div>' +
+            '<div class="analysis-section-title">Features, least supported first <span class="legend"><span class="support-chip s-y">Supported</span><span class="support-chip s-a">Partial</span><span class="support-chip s-n">Not supported</span></span></div>' +
+            (rows || '<div class="empty"><p>No HTML/CSS features with client-support data were found.</p></div>') +
+            '</div>';
     }
 
     // ---------- responsive preview ----------

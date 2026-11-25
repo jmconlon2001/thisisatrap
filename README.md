@@ -37,6 +37,7 @@ ThisIsATrap is a **real SMTP server that never delivers anything**. Point your a
 - [Deploy to IIS](#deploy-to-iis)
 - [Run with Docker](#run-with-docker)
 - [Connecting your apps](#connecting-your-apps)
+- [HTML check](#html-check)
 - [Inboxes](#inboxes)
 - [Auto-purge](#auto-purge)
 - [Status & health](#status--health)
@@ -150,6 +151,19 @@ smtplib.SMTP("trap-host", 25).sendmail("app@example.com", ["user@example.com"], 
 ```
 
 Recipients that are in the SMTP envelope but not in the `To`/`Cc` headers are shown as **Bcc**, so you can check who actually got a copy.
+
+## HTML check
+
+The **HTML check** tab on any HTML message works like mailtrap.io's HTML Check. It lists every HTML and CSS feature the email uses and how well each is supported across email clients, with an overall score.
+
+- **Per-client scores:** for Apple Mail, Gmail, Outlook, Yahoo! Mail, Samsung Email, Thunderbird, AOL, ProtonMail, Fastmail and HEY, with counts of unsupported and partially supported features.
+- **Per-feature detail:** features are listed least supported first. Each shows where it appears in your HTML, a support chip per client (hover a chip for per-platform results), the caniemail notes, and a link to the full support table.
+- **What it detects:**
+  - **HTML:** elements, attributes, ARIA attributes, forms, anchor and mailto links, comments, AMP.
+  - **CSS:** properties and vendor-prefixed variants, `display:flex`/`grid`, at-rules and media features (`prefers-color-scheme`, `hover`, and so on), selectors and pseudo-classes, units, functions (`calc()`, gradients, `var()`, modern colors).
+  - **Images:** image formats, including data URIs.
+
+Support data comes from [caniemail.com](https://www.caniemail.com) (MIT). It's bundled in the app, so the check works offline; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). To refresh it, run `.\tools\Update-CanIEmail.ps1`.
 
 ## Inboxes
 
@@ -269,6 +283,7 @@ Everything the UI does is available over plain HTTP, which is handy for automate
 | `GET` | `/api/messages?q=&unread=&attachments=&inbox=&skip=&take=` | List and search (newest first), optionally in one inbox |
 | `GET` | `/api/messages/{id}` | Full detail: headers, text, HTML, attachments |
 | `GET` | `/api/messages/{id}/html` | Rendered HTML body |
+| `GET` | `/api/messages/{id}/html-check` | Email-client support report (score, per-client, per-feature) |
 | `GET` | `/api/messages/{id}/raw[?download=true]` | Raw source / `.eml` download |
 | `GET` | `/api/messages/{id}/attachments/{index}[?download=true]` | Attachment content |
 | `POST` | `/api/messages/{id}/read?read=true\|false` | Mark read or unread |

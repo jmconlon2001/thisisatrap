@@ -10,8 +10,8 @@ Working branch: `feature/mailtrap-parity`. The plan adds the features ThisIsATra
 | 3 | Health and status: `/healthz`, `/readyz`, `/api/status`, a status page, Docker and IIS health checks | Done |
 | 4 | Multiple inboxes | Done |
 | 5 | Responsive preview | Done |
-| 6 | HTML check (caniemail) | Next |
-| 7 | Spam & content analysis | |
+| 6 | HTML check (caniemail) | Done |
+| 7 | Spam & content analysis | Next |
 | 8 | Link & image checker | |
 | 9 | STARTTLS / SMTPS | |
 | 10 | Webhooks & error simulation | |
