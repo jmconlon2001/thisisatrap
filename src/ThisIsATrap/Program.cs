@@ -8,6 +8,11 @@ if (HealthProbe.IsRequested(args))
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Keep the most recent log lines in memory for the Logs page (in addition to the normal providers).
+var logBuffer = new ThisIsATrap.Logs.LogBuffer(builder.Configuration.GetValue($"{TrapOptions.Section}:LogViewer:Capacity", 2000));
+builder.Logging.AddProvider(new ThisIsATrap.Logs.BufferLoggerProvider(logBuffer));
+builder.Services.AddSingleton(logBuffer);
+
 // Bind the legacy section first so the new one wins wherever both set a value.
 builder.Services.Configure<TrapOptions>(builder.Configuration.GetSection(TrapOptions.LegacySection));
 builder.Services.Configure<TrapOptions>(builder.Configuration.GetSection(TrapOptions.Section));
@@ -15,6 +20,8 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<MailStore>();
 builder.Services.AddSingleton<SmtpTls>();
 builder.Services.AddSingleton<SmtpRules>();
+builder.Services.AddSingleton<SmtpAccess>();
+builder.Services.AddSingleton<EnvironmentLabels>();
 builder.Services.Configure<WebhookOptions>(builder.Configuration.GetSection($"{TrapOptions.Section}:Webhooks"));
 builder.Services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<WebhookOptions>>().Value);
 // Webhook receivers are usually internal, so private networks are allowed; cloud metadata addresses never are.
@@ -45,6 +52,7 @@ api.MapMessages();
 api.MapInboxes();
 api.MapSettings();
 api.MapAnalysis();
+api.MapLogs();
 
 app.Run();
 return 0;

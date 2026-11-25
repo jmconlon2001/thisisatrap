@@ -22,6 +22,7 @@ public sealed class SmtpListenerService(
     Health.RuntimeStats stats,
     SmtpTls tls,
     SmtpRules rules,
+    SmtpAccess access,
     WebhookService webhooks,
     TimeProvider time,
     ILogger<SmtpListenerService> log) : BackgroundService
@@ -64,7 +65,10 @@ public sealed class SmtpListenerService(
         var services = new SmtpServer.ComponentModel.ServiceProvider();
         services.Add(new TrapMessageStore(store, events, stats, webhooks, o.AutoCreateInboxes, log));
         services.Add(new AcceptAnyUser());
-        services.Add(new SmtpRuleFilter(rules, events, stats, time, log));
+        // Allowlist first (a blocked client never reaches the error-simulation rules), then the rules.
+        services.Add(new ChainedMailboxFilter(
+            new SmtpAccessFilter(access, events, stats, log),
+            new SmtpRuleFilter(rules, events, stats, time, log)));
 
         // IIS can briefly run the old and new worker side by side during a recycle, so the port
         // may still be held for a moment. Keep retrying instead of giving up.
@@ -74,6 +78,15 @@ public sealed class SmtpListenerService(
             try
             {
                 var server = new SmtpServer.SmtpServer(BuildOptions(o), services);
+                // Connection-level activity for the Logs page.
+                server.SessionCreated += (_, e) => log.LogInformation("SMTP connection from {Ip}", SmtpAccess.RemoteAddress(e.Context));
+                server.SessionFaulted += (_, e) =>
+                {
+                    // Clients that just drop the connection are routine; anything else is worth a warning.
+                    var level = e.Exception is IOException or System.Net.Sockets.SocketException or OperationCanceledException ? LogLevel.Debug : LogLevel.Warning;
+                    log.Log(level, "SMTP session from {Ip} ended with an error: {Error}", SmtpAccess.RemoteAddress(e.Context), e.Exception.Message);
+                };
+                server.SessionCompleted += (_, e) => log.LogDebug("SMTP session from {Ip} closed", SmtpAccess.RemoteAddress(e.Context));
                 log.LogInformation("SMTP listener starting: {Status}", ListeningStatus(o));
                 stats.SmtpStatus = ListeningStatus(o);
                 await server.StartAsync(stoppingToken);
@@ -91,6 +104,22 @@ public sealed class SmtpListenerService(
                 try { await Task.Delay(TimeSpan.FromSeconds(Math.Min(30, 2 * attempt)), stoppingToken); }
                 catch (OperationCanceledException) { return; }
             }
+        }
+    }
+
+    /// <summary>Runs filters in order; the first that refuses (returns false or throws) wins.</summary>
+    private sealed class ChainedMailboxFilter(params IMailboxFilter[] filters) : IMailboxFilter
+    {
+        public async Task<bool> CanAcceptFromAsync(ISessionContext context, SmtpServer.Mail.IMailbox from, int size, CancellationToken ct)
+        {
+            foreach (var f in filters) if (!await f.CanAcceptFromAsync(context, from, size, ct)) return false;
+            return true;
+        }
+
+        public async Task<bool> CanDeliverToAsync(ISessionContext context, SmtpServer.Mail.IMailbox to, SmtpServer.Mail.IMailbox from, CancellationToken ct)
+        {
+            foreach (var f in filters) if (!await f.CanDeliverToAsync(context, to, from, ct)) return false;
+            return true;
         }
     }
 

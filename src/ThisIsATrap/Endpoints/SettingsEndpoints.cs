@@ -9,8 +9,10 @@ public static class SettingsEndpoints
 {
     public static void MapSettings(this RouteGroupBuilder api)
     {
-        api.MapGet("/settings", (MailStore store, IOptions<TrapOptions> options, EventHub events, RuntimeStats stats, SmtpTls tls) => Results.Ok(new
+        api.MapGet("/settings", (MailStore store, IOptions<TrapOptions> options, EventHub events, RuntimeStats stats, SmtpTls tls, EnvironmentLabels env, SmtpAccess access) => Results.Ok(new
         {
+            environment = env.Get(),
+            access = new { access.Get().Enabled, entries = access.Get().Allow.Count },
             tls = TlsDto(tls),
             purge = store.GetPurgeSettings(),
             lastPurgeUtc = PurgeService.LastRunUtc,
@@ -39,6 +41,19 @@ public static class SettingsEndpoints
         });
 
         api.MapPost("/purge", (PurgeService purge) => Results.Ok(new { removed = purge.RunOnce() }));
+
+        // ---- environment label (null/empty label = remove the override; config applies again)
+        api.MapGet("/settings/environment", (EnvironmentLabels env) => Results.Ok(env.Get()));
+        api.MapPut("/settings/environment", (EnvironmentBadgeInput body, EnvironmentLabels env, EventHub events) =>
+        {
+            try
+            {
+                var badge = env.Save(body);
+                events.Publish("environment", badge);
+                return Results.Ok(badge);
+            }
+            catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+        });
 
         // ---- webhooks (secrets are write-only: responses only say whether one is set)
         api.MapGet("/settings/webhooks", (WebhookService hooks) => Results.Ok(hooks.Views()));

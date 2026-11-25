@@ -246,7 +246,7 @@
         u.textContent = state.stats.unread;
         u.classList.toggle('hot', state.stats.unread > 0);
         var allUnread = state.inboxes.length ? state.inboxes.reduce(function (s, i) { return s + i.unread; }, 0) : state.stats.unread;
-        document.title = (allUnread ? '(' + allUnread + ') ' : '') + 'ThisIsATrap';
+        document.title = (allUnread ? '(' + allUnread + ') ' : '') + (state.env && state.env.label ? '[' + state.env.label + '] ' : '') + 'ThisIsATrap';
         $('list-meta').textContent = state.total === state.stats.total || state.q || state.folder !== 'all'
             ? state.total + (state.total === 1 ? ' message' : ' messages')
             : '';
@@ -718,6 +718,7 @@
             if (ev.type === 'message') onNewMessage(ev.payload);
             else if (ev.type === 'inboxes') reloadInboxesSoon();
             else if (ev.type === 'rejected') rejectedToast(ev.payload);
+            else if (ev.type === 'environment') applyEnvironment(ev.payload);
             else if (ev.type === 'deleted') { removeLocal(ev.payload.id); if (state.selectedId === ev.payload.id) clearSelection(); }
             else if (ev.type === 'purged' || ev.type === 'changed') {
                 if (ev.type === 'purged' && ev.payload && ev.payload.removed) toast('Removed ' + ev.payload.removed + ' message' + (ev.payload.removed === 1 ? '' : 's'));
@@ -761,9 +762,27 @@
     }
 
     // ---------- settings + connect ----------
+    // ---------- environment label ----------
+    var envColors = { red: '#ef4444', orange: '#f97316', amber: '#f59e0b', green: '#10b981', teal: '#14b8a6', blue: '#3b82f6', indigo: '#6366f1', purple: '#a855f7', pink: '#ec4899', gray: '#64748b' };
+    function envColor(c) { return envColors[c] || (/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(c || '') ? c : envColors.indigo); }
+
+    function applyEnvironment(env) {
+        state.env = env;
+        var badge = $('env-badge');
+        if (env && env.label) {
+            badge.textContent = env.label;
+            badge.style.setProperty('--env', envColor(env.color));
+            badge.hidden = false;
+        } else {
+            badge.hidden = true;
+        }
+        renderCounts();
+    }
+
     function loadSettings() {
         return api('settings').then(function (s) {
             state.settings = s;
+            applyEnvironment(s.environment);
             var ok = s.smtp.status.indexOf('listening') === 0;
             $('smtp-dot').className = 'dot ' + (ok ? 'dot-live' : 'dot-danger');
             $('smtp-status').textContent = ok ? 'SMTP listening' : 'SMTP ' + s.smtp.status;
@@ -786,8 +805,20 @@
 
     function openSettings() {
         loadSettings().then(function (s) {
-            var p = s.purge;
+            var p = s.purge, env = s.environment;
             var modal = openModal('Settings & auto-purge', 'i-settings',
+                '<div class="form-section">' +
+                '<div class="form-section-title">Environment label</div>' +
+                '<div class="form-text" style="margin:-.2rem 0 .7rem">Shown in the header and the tab title so Dev / Stage / QA traps are easy to tell apart.' +
+                (env.source === 'config' ? ' Currently set by configuration (<span class="mono">ThisIsATrap:EnvironmentLabel</span>); a value here overrides it.' : '') + '</div>' +
+                '<div class="form-grid form-grid-env">' +
+                '<div><label class="form-label" for="env-label">Label</label><input class="form-control" id="env-label" maxlength="24" placeholder="e.g. QA" value="' + esc(env.source === 'settings' ? env.label : '') + '" />' +
+                '<div class="form-text">Empty = ' + (env.source === 'config' || (env.source === 'settings' && s.environment) ? 'use configuration' : 'no label') + '</div></div>' +
+                '<div><label class="form-label" for="env-color">Colour</label><select class="form-control" id="env-color">' +
+                '<option value="">Automatic</option>' + Object.keys(envColors).map(function (c) {
+                    return '<option value="' + c + '"' + (env.source === 'settings' && env.color === c ? ' selected' : '') + '>' + c.charAt(0).toUpperCase() + c.slice(1) + '</option>';
+                }).join('') + '</select></div>' +
+                '<div><span class="form-label">Preview</span><div><span class="env-badge" id="env-preview"></span></div></div></div></div>' +
                 '<div class="form-section">' +
                 '<div class="form-section-title">Auto-purge (global rules)</div>' +
                 '<div class="form-text" style="margin:-.2rem 0 .7rem">Apply to every inbox that has no custom rules. The message limit is per inbox.</div>' +
@@ -813,6 +844,9 @@
                 '<button type="button" class="btn" data-close>Cancel</button>' +
                 '<button type="button" class="btn btn-primary" data-action="save-settings"><i class="i i-check"></i> Save</button>');
             modal.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT') save(); });
+            $('env-label').addEventListener('input', updateEnvPreview);
+            $('env-color').addEventListener('change', updateEnvPreview);
+            updateEnvPreview();
         });
     }
 
@@ -825,9 +859,29 @@
         };
     }
 
+    function updateEnvPreview() {
+        var el = $('env-preview');
+        if (!el) return;
+        var label = $('env-label').value.trim() || (state.env && state.env.source === 'config' ? state.env.label : '');
+        var color = $('env-color').value || autoEnvColor(label);
+        el.textContent = label || '(none)';
+        el.style.setProperty('--env', envColor(color));
+        el.classList.toggle('env-empty', !label);
+    }
+    // Mirrors EnvironmentLabels.NormalizeColor on the server.
+    function autoEnvColor(label) {
+        var l = (label || '').toLowerCase();
+        return /prod|live/.test(l) ? 'red' : /stag|qa|uat|test/.test(l) ? 'amber' : /dev|local/.test(l) ? 'green' : 'indigo';
+    }
+
     function save() {
-        api('settings/purge', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(readPurgeForm()) })
-            .then(function () { closeModal(); toast('Auto-purge settings saved'); })
+        var envBody = { label: $('env-label').value.trim() || null, color: $('env-color').value || null };
+        Promise.all([
+            api('settings/purge', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(readPurgeForm()) }),
+            fetch('api/settings/environment', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(envBody) })
+                .then(function (r) { return r.json().then(function (b) { if (!r.ok) throw new Error(b.error || r.status); return b; }); }),
+        ])
+            .then(function (results) { applyEnvironment(results[1]); closeModal(); toast('Settings saved'); })
             .catch(function (e) { toast('Save failed: ' + e.message, 'error'); });
     }
 
@@ -1112,23 +1166,133 @@
             '</div></div>';
     }
 
+    // Full-page views besides the mailbox. Each has a #hash so it can be bookmarked.
+    var pageViews = ['status', 'logs'];
+
     function showView(view) {
         state.view = view;
-        var isStatus = view === 'status';
-        mailEl.hidden = isStatus;
-        $('status-view').hidden = !isStatus;
+        var isMail = view === 'mail';
+        mailEl.hidden = !isMail;
+        pageViews.forEach(function (v) { $(v + '-view').hidden = v !== view; });
         document.querySelectorAll('[data-view]').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-view') === view); });
-        if (isStatus) document.querySelectorAll('[data-folder]').forEach(function (b) { b.classList.remove('active'); });
+        if (!isMail) document.querySelectorAll('[data-folder]').forEach(function (b) { b.classList.remove('active'); });
         $('nav-toggle').checked = false;
         clearInterval(statusTimer);
-        if (isStatus) {
-            if (location.hash !== '#status') history.replaceState(null, '', '#status');
+        stopLogTail();
+        if (!isMail) {
+            if (location.hash !== '#' + view) history.replaceState(null, '', '#' + view);
+        } else if (pageViews.indexOf(location.hash.slice(1)) >= 0) {
+            history.replaceState(null, '', location.pathname + location.search);
+        }
+        if (view === 'status') {
             $('status-view').innerHTML = '<div class="status-wrap"><div class="empty"><p>Loading…</p></div></div>';
             loadStatus();
             statusTimer = setInterval(loadStatus, 5000);
-        } else if (location.hash === '#status') {
-            history.replaceState(null, '', location.pathname + location.search);
+        } else if (view === 'logs') {
+            openLogs();
         }
+    }
+
+    // ---------- log viewer ----------
+    var logState = { lastSeq: 0, entries: [], timer: null, paused: false, follow: true, level: 'Information', q: '' };
+    var levelClass = { Trace: 'muted', Debug: 'muted', Information: 'info', Warning: 'warn', Error: 'bad', Critical: 'bad' };
+    var levelShort = { Trace: 'TRC', Debug: 'DBG', Information: 'INF', Warning: 'WRN', Error: 'ERR', Critical: 'CRT' };
+
+    function stopLogTail() { clearInterval(logState.timer); logState.timer = null; }
+
+    function openLogs() {
+        try { logState.level = localStorage.getItem('mt-log-level') || 'Information'; } catch (err) { }
+        $('logs-view').innerHTML = '<div class="status-wrap logs-wrap">' +
+            '<div class="status-title"><h2>Logs</h2><span class="meta" id="log-meta"></span></div>' +
+            '<div class="log-toolbar">' +
+            '<div class="input-icon log-search"><i class="i i-search"></i><input id="log-q" class="form-control" type="search" placeholder="Filter text, category, IP…" autocomplete="off" /></div>' +
+            '<select id="log-level" class="form-control log-level">' + ['Debug', 'Information', 'Warning', 'Error'].map(function (l) {
+                return '<option value="' + l + '"' + (l === logState.level ? ' selected' : '') + '>' + (l === 'Information' ? 'Info' : l) + ' and above</option>';
+            }).join('') + '</select>' +
+            '<label class="switch log-switch"><input type="checkbox" id="log-follow"' + (logState.follow ? ' checked' : '') + ' /> Follow</label>' +
+            '<button type="button" class="btn btn-sm" data-action="log-pause" id="log-pause">' + (logState.paused ? 'Resume' : 'Pause') + '</button>' +
+            '<a class="btn btn-sm" id="log-download" href="api/logs/download" download><i class="i i-download"></i> Download</a>' +
+            '<button type="button" class="btn btn-sm btn-danger" data-action="log-clear"><i class="i i-trash"></i> Clear</button></div>' +
+            '<div class="log-box" id="log-box"><table class="log-table"><tbody id="log-rows"></tbody></table></div></div>';
+        $('log-q').addEventListener('input', function (e) { clearTimeout(logState.qTimer); logState.qTimer = setTimeout(function () { logState.q = e.target.value.trim(); reloadLogs(); }, 250); });
+        $('log-level').addEventListener('change', function (e) { logState.level = e.target.value; try { localStorage.setItem('mt-log-level', logState.level); } catch (err) { } reloadLogs(); });
+        $('log-follow').addEventListener('change', function (e) { logState.follow = e.target.checked; if (logState.follow) scrollLogs(); });
+        reloadLogs();
+        logState.timer = setInterval(function () { if (!logState.paused) pollLogs(); }, 2000);
+    }
+
+    function logQuery(after) {
+        var p = new URLSearchParams({ after: after, level: logState.level, take: 1000 });
+        if (logState.q) p.set('q', logState.q);
+        return 'logs?' + p.toString();
+    }
+
+    function reloadLogs() {
+        logState.lastSeq = 0; logState.entries = [];
+        $('log-rows').innerHTML = '';
+        var dl = new URLSearchParams({ level: logState.level }); if (logState.q) dl.set('q', logState.q);
+        $('log-download').href = 'api/logs/download?' + dl.toString();
+        pollLogs();
+    }
+
+    function pollLogs() {
+        if (state.view !== 'logs') return;
+        api(logQuery(logState.lastSeq)).then(function (page) {
+            if (state.view !== 'logs') return;
+            logState.lastSeq = page.lastSeq;
+            if (page.entries.length) {
+                $('log-rows').insertAdjacentHTML('beforeend', page.entries.map(logRow).join(''));
+                logState.entries = logState.entries.concat(page.entries);
+                // Keep the DOM bounded.
+                var rows = $('log-rows');
+                while (rows.children.length > 3000) rows.removeChild(rows.firstChild);
+                if (logState.follow) scrollLogs();
+            }
+            $('log-meta').textContent = page.buffered + ' of ' + page.capacity + ' lines kept in memory' +
+                (page.dropped ? ' · ' + page.dropped + ' older dropped' : '') + (logState.paused ? ' · paused' : ' · live');
+            if (!$('log-rows').children.length) $('log-rows').innerHTML = '<tr class="log-empty"><td>No log lines match.</td></tr>';
+            else { var empty = document.querySelector('.log-empty'); if (empty) empty.remove(); }
+        }).catch(function (e) { $('log-meta').textContent = 'Could not load logs: ' + e.message; });
+    }
+
+    function logRow(e) {
+        var cls = levelClass[e.level] || 'muted';
+        return '<tr class="lvl-' + cls + '"><td class="log-time" title="' + esc(e.utc) + '">' + esc(new Date(e.utc).toLocaleTimeString([], { hour12: false }) + '.' + String(new Date(e.utc).getMilliseconds()).padStart(3, '0')) + '</td>' +
+            '<td><span class="log-level-pill ' + cls + '">' + (levelShort[e.level] || esc(e.level)) + '</span></td>' +
+            '<td class="log-cat">' + esc(e.category) + '</td>' +
+            '<td class="log-msg">' + esc(e.message) + (e.exception ? '<details><summary>Exception</summary><pre>' + esc(e.exception) + '</pre></details>' : '') + '</td></tr>';
+    }
+
+    function scrollLogs() { var box = $('log-box'); if (box) box.scrollTop = box.scrollHeight; }
+
+    // ---------- SMTP client allowlist ----------
+    function openAccess() {
+        api('settings/smtp-access').then(function (r) {
+            var s = r.settings;
+            openModal('SMTP access', 'i-shield',
+                '<p style="margin-top:0">Optionally restrict which machines may send mail to this trap. When on, clients that aren’t listed get <span class="mono">554 5.7.1</span> at <span class="mono">MAIL FROM</span> and the attempt shows in Logs. The web UI is not affected.</p>' +
+                '<label class="switch"><input type="checkbox" id="ac-enabled"' + (s.enabled ? ' checked' : '') + ' /> Only accept mail from the addresses below</label>' +
+                '<label class="form-label" for="ac-allow">Allowed addresses — one per line: an IP (<span class="mono">10.0.0.5</span>) or a CIDR range (<span class="mono">192.168.1.0/24</span>, <span class="mono">fd00::/8</span>)</label>' +
+                '<textarea class="form-control mono" id="ac-allow" rows="8" spellcheck="false" placeholder="192.168.1.0/24&#10;10.20.0.15">' + esc(s.allow.join('\n')) + '</textarea>' +
+                '<div style="display:flex;gap:.5rem;align-items:center;margin-top:.5rem;flex-wrap:wrap">' +
+                (r.yourAddress ? '<button type="button" class="btn btn-sm" data-action="access-add-me" data-ip="' + esc(r.yourAddress) + '"><i class="i i-plus"></i> Add my address (' + esc(r.yourAddress) + ')</button>' : '') +
+                '</div>' +
+                '<label class="switch" style="margin-top:1rem"><input type="checkbox" id="ac-loopback"' + (s.alwaysAllowLoopback ? ' checked' : '') + ' /> Always allow this machine (127.0.0.1 / ::1)</label>' +
+                '<div class="form-text">Lines starting with <span class="mono">#</span> are ignored. Behind Docker’s port mapping, the address seen may be the Docker gateway rather than the real client; check Logs for the address of each connection.</div>',
+                '<button type="button" class="btn" data-close>Cancel</button><button type="button" class="btn btn-primary" data-action="save-access"><i class="i i-check"></i> Save</button>');
+        }).catch(function (e) { toast('Could not load SMTP access settings: ' + e.message, 'error'); });
+    }
+
+    function saveAccess() {
+        var body = {
+            enabled: $('ac-enabled').checked,
+            allow: $('ac-allow').value.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean),
+            alwaysAllowLoopback: $('ac-loopback').checked,
+        };
+        fetch('api/settings/smtp-access', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+            .then(function (r) { return r.json().then(function (b) { if (!r.ok) throw new Error(b.error || r.status); return b; }); })
+            .then(function (s) { closeModal(); toast(s.enabled ? 'SMTP allowlist on: ' + s.allow.length + ' entr' + (s.allow.length === 1 ? 'y' : 'ies') : 'SMTP allowlist off: everyone may send'); loadSettings(); })
+            .catch(function (e) { toast('Save failed: ' + e.message, 'error'); });
     }
 
     // ---------- folders / search ----------
@@ -1223,6 +1387,20 @@
             case 'reset-rules': api('settings/smtp-rules/defaults').then(openRules); break;
             case 'save-rules': saveRules(); break;
             case 'remove-row': actionEl.closest('.editor-row').remove(); break;
+            case 'smtp-access': $('nav-toggle').checked = false; openAccess(); break;
+            case 'save-access': saveAccess(); break;
+            case 'access-add-me':
+                var ta = $('ac-allow'), ip = actionEl.getAttribute('data-ip');
+                if (ta.value.split(/\r?\n/).map(function (l) { return l.trim(); }).indexOf(ip) < 0) ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : '') + ip;
+                break;
+            case 'log-pause':
+                logState.paused = !logState.paused;
+                actionEl.textContent = logState.paused ? 'Resume' : 'Pause';
+                if (!logState.paused) pollLogs();
+                break;
+            case 'log-clear':
+                if (confirm('Clear the log lines kept in memory?')) api('logs', { method: 'DELETE' }).then(function () { reloadLogs(); toast('Logs cleared'); });
+                break;
         }
     });
 
@@ -1250,7 +1428,8 @@
         var id = location.hash.slice(1);
         if (/^[0-9a-f]{32}$/.test(id)) select(id);
     });
-    if (location.hash === '#status') showView('status'); else loadStatus();
+    if (pageViews.indexOf(location.hash.slice(1)) >= 0) showView(location.hash.slice(1));
+    if (state.view !== 'status') loadStatus();
     // Keep the sidebar health dot current even when the status view is closed.
     setInterval(function () { if (state.view !== 'status') loadStatus(); }, 30000);
     connectEvents();

@@ -12,6 +12,7 @@ services:
     environment:
       ThisIsATrap__PublicSmtpPort: "25"   # keep in sync with the host SMTP port above
       ThisIsATrap__ServerName: "thisisatrap.local"
+      ThisIsATrap__EnvironmentLabel: "DEV"          # header badge: DEV / STAGE / QA …
       ThisIsATrap__MaxMessageSizeMb: "50"
       # Optional TLS (self-signed certificate generated in /data):
       # ThisIsATrap__Tls__StartTls: "true"
