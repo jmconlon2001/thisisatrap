@@ -70,14 +70,23 @@ jobs:
       - name: Build image
         run: docker build -t thisisatrap:ci .
       - name: Run container
-        run: docker run -d --name trap -p 8025:8080 -p 2525:2525 thisisatrap:ci
-      - name: Wait for SMTP listener
+        run: docker run -d --name trap --health-interval=3s --health-start-period=5s -p 8025:8080 -p 2525:2525 thisisatrap:ci
+      - name: Wait for readiness (/readyz)
         run: |
           for i in $(seq 1 60); do
-            if curl -fs http://localhost:8025/api/settings | grep -q '"status":"listening'; then exit 0; fi
+            if curl -fs http://localhost:8025/readyz; then echo; exit 0; fi
             sleep 1
           done
           docker logs trap; exit 1
+      - name: Docker HEALTHCHECK reports healthy
+        run: |
+          for i in $(seq 1 30); do
+            state=$(docker inspect --format '{{.State.Health.Status}}' trap)
+            echo "health: $state"
+            if [ "$state" = "healthy" ]; then exit 0; fi
+            sleep 3
+          done
+          docker inspect --format '{{json .State.Health}}' trap; exit 1
       - name: Send a message and find it
         run: |
           python3 - <<'EOF'
@@ -92,3 +101,49 @@ jobs:
       - name: Container logs
         if: always()
         run: docker logs trap
+
+  publish:
+    # Every push (any branch) that passes the tests and the smoke test publishes an image:
+    #   ghcr.io/<owner>/thisisatrap:<branch>, :sha-<short>, and :latest for main.
+    name: Publish image (ghcr.io)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    needs: [test, docker]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/thisisatrap
+          tags: |
+            type=ref,event=branch
+            type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=ThisIsATrap
+            org.opencontainers.image.description=Local SMTP sink with a web inbox. Nothing is ever delivered.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Summary
+        run: |
+          echo "### Published image" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,25 @@
+# ThisIsATrap from the prebuilt image (no source or build needed on the host).
+# Works as-is in the OpenMediaVault Compose plugin, Portainer, or `docker compose -f compose.ghcr.yml up -d`.
+#
+# Images are published by CI on every push:
+#   :latest                     newest build of main
+#   :feature-mailtrap-parity    newest build of that branch (any branch name, '/' becomes '-')
+#   :sha-<commit>               one exact commit
+# Update: pull the image again (OMV: "Pull", then "Up"), or `docker compose pull && docker compose up -d`.
+services:
+  thisisatrap:
+    image: ghcr.io/jmconlon2001/thisisatrap:latest
+    pull_policy: always
+    container_name: thisisatrap
+    restart: unless-stopped
+    ports:
+      - "8025:8080"   # web UI
+      - "2525:2525"   # SMTP (use "25:2525" if port 25 is free on the host)
+    environment:
+      ThisIsATrap__PublicSmtpPort: "2525"   # keep in sync with the host SMTP port above
+      ThisIsATrap__ServerName: "thisisatrap.local"
+    volumes:
+      - thisisatrap-data:/data
+
+volumes:
+  thisisatrap-data:

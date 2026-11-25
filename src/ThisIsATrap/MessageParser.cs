@@ -28,7 +28,9 @@ public sealed record MessageDetail(
     string? Html,
     string? Text,
     IReadOnlyList<AttachmentInfo> Attachments,
-    IReadOnlyList<HeaderInfo> Headers);
+    IReadOnlyList<HeaderInfo> Headers,
+    string Inbox = Inbox.DefaultSlug,
+    string InboxName = Inbox.DefaultName);
 
 public static partial class MessageParser
 {

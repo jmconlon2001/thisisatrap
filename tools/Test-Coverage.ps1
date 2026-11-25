@@ -35,7 +35,8 @@ try {
 
     $reports = (Get-ChildItem $results -Recurse -Filter '*.cobertura.xml').FullName -join ';'
     dotnet reportgenerator "-reports:$reports" "-targetdir:$(Join-Path $results 'coverage')" `
-        '-reporttypes:TextSummary;MarkdownSummaryGithub;Html' '-assemblyfilters:+ThisIsATrap' | Out-Null
+        '-reporttypes:TextSummary;MarkdownSummaryGithub;Html' '-assemblyfilters:+ThisIsATrap' `
+        '-classfilters:-System.Text.RegularExpressions.Generated*' | Out-Null   # compiler-generated [GeneratedRegex] code
 
     $summary = Get-Content (Join-Path $results 'coverage/Summary.txt') -Raw
     $line = [regex]::Match($summary, 'Line coverage:\s*([\d.]+)%').Groups[1].Value

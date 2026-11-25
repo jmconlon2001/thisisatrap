@@ -3,6 +3,10 @@
     Sends test messages to ThisIsATrap (HTML body, inline image, and attachments) using raw SMTP.
 .EXAMPLE
     .\Send-TestMail.ps1 -Server localhost -Port 25 -Count 3
+.EXAMPLE
+    .\Send-TestMail.ps1 -User billing-api -Password x      # lands in the "billing-api" inbox (SMTP login)
+.EXAMPLE
+    .\Send-TestMail.ps1 -Inbox billing-api                 # same, via the X-Trap-Inbox header (no login)
 #>
 param(
     [string]$Server = 'localhost',
@@ -13,7 +17,10 @@ param(
     [string]$Cc = 'qa-team@example.com',
     [string]$Bcc = 'audit@example.com',
     [string]$User,
-    [string]$Password
+    [string]$Password,
+    [string]$Inbox,
+    # Upgrade the connection with STARTTLS (the server's certificate is not validated: it's usually self-signed).
+    [switch]$StartTls
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,6 +53,15 @@ for ($n = 1; $n -le $Count; $n++) {
     try {
         Read-Reply $reader | Out-Null
         Send-Command $writer $reader "EHLO $env:COMPUTERNAME" | Out-Null
+        if ($StartTls) {
+            Send-Command $writer $reader 'STARTTLS' | Out-Null
+            $ssl = [System.Net.Security.SslStream]::new($stream, $false, { $true })
+            $ssl.AuthenticateAsClient($Server)
+            $reader = [System.IO.StreamReader]::new($ssl, [Text.Encoding]::ASCII)
+            $writer = [System.IO.StreamWriter]::new($ssl, [Text.Encoding]::ASCII)
+            Send-Command $writer $reader "EHLO $env:COMPUTERNAME" | Out-Null
+            Write-Host "  TLS: $($ssl.SslProtocol), server certificate $($ssl.RemoteCertificate.Subject)"
+        }
         if ($User) {
             $plain = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("`0$User`0$Password"))
             Send-Command $writer $reader "AUTH PLAIN $plain" | Out-Null
@@ -64,7 +80,7 @@ To: $To
 Cc: $Cc
 Subject: Build #$((Get-Random -Minimum 1000 -Maximum 9999)) succeeded ($n of $Count, $stamp)
 Date: $((Get-Date).ToString('r'))
-Message-ID: <$([guid]::NewGuid())@example.com>
+Message-ID: <$([guid]::NewGuid())@example.com>$(if ($Inbox) { "`r`nX-Trap-Inbox: $Inbox" })
 MIME-Version: 1.0
 Content-Type: multipart/mixed; boundary="$boundary"
 

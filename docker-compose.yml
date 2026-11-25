@@ -2,17 +2,32 @@ services:
   thisisatrap:
     build: .
     image: thisisatrap:latest
+    pull_policy: build   # local image: always build, never try to pull it from a registry
     container_name: thisisatrap
     restart: unless-stopped
     ports:
       - "8025:8080"   # web UI
       - "25:2525"     # SMTP (change the left side if 25 is taken on the host)
+      # - "465:4465"  # SMTPS, when ThisIsATrap__Tls__SmtpsPort is set below
     environment:
       ThisIsATrap__PublicSmtpPort: "25"   # keep in sync with the host SMTP port above
       ThisIsATrap__ServerName: "thisisatrap.local"
       ThisIsATrap__MaxMessageSizeMb: "50"
+      # Optional TLS (self-signed certificate generated in /data):
+      # ThisIsATrap__Tls__StartTls: "true"
+      # ThisIsATrap__Tls__SmtpsPort: "4465"
+      # ThisIsATrap__Tls__PublicSmtpsPort: "465"
     volumes:
       - thisisatrap-data:/data
+    # Optional real SpamAssassin scoring (see the spamassassin service below):
+    #   ThisIsATrap__SpamAssassin__Host: "spamassassin"
+
+  # Optional: SpamAssassin daemon used only to *score* trapped mail (nothing is relayed).
+  # Uncomment, then add ThisIsATrap__SpamAssassin__Host under the environment above.
+  # spamassassin:
+  #   image: instantlinux/spamassassin:latest
+  #   restart: unless-stopped
+  #   expose: ["783"]
 
 volumes:
   thisisatrap-data:

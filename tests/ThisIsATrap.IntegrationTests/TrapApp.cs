@@ -47,7 +47,7 @@ public class TrapApp : WebApplicationFactory<Program>, IAsyncLifetime
         });
     }
 
-    public async ValueTask InitializeAsync()
+    public virtual async ValueTask InitializeAsync()
     {
         _ = Server; // starts the host and its background services
         var deadline = DateTime.UtcNow.AddSeconds(15);

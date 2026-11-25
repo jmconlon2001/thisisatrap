@@ -16,6 +16,8 @@
     .\Deploy-ThisIsATrap.ps1                              # http://<host>:8025, SMTP on 25
 .EXAMPLE
     .\Deploy-ThisIsATrap.ps1 -HttpPort 80 -HostName thisisatrap.dev.local -SmtpPort 2525
+.EXAMPLE
+    .\Deploy-ThisIsATrap.ps1 -StartTls -SmtpsPort 465                       # TLS with a generated self-signed cert
 #>
 [CmdletBinding()]
 param(
@@ -27,6 +29,12 @@ param(
     [int]$SmtpPort = 25,
     [int]$MaxMessageSizeMb = 50,
     [switch]$SkipFirewall,
+    # Optional SMTP TLS: STARTTLS on the SMTP port and/or implicit TLS on a second port (465 is customary).
+    # Without -CertificatePath a self-signed certificate is generated in the data folder.
+    [switch]$StartTls,
+    [int]$SmtpsPort = 0,
+    [string]$CertificatePath = '',
+    [string]$CertificatePassword = '',
     # Installs from before the rename to ThisIsATrap are migrated automatically (site removed, mail kept).
     [string]$LegacySiteName = 'MailTrap',
     [string]$LegacySitePath = 'C:\inetpub\MailTrap',
@@ -128,6 +136,14 @@ $settings.ThisIsATrap.SmtpPort = $SmtpPort
 $settings.ThisIsATrap.DataPath = $DataPath
 $settings.ThisIsATrap.MaxMessageSizeMb = $MaxMessageSizeMb
 $settings.ThisIsATrap.ServerName = if ($HostName) { $HostName } else { [System.Net.Dns]::GetHostEntry('').HostName }
+$tls = [ordered]@{ StartTls = [bool]$StartTls }
+if ($SmtpsPort -gt 0) { $tls.SmtpsPort = $SmtpsPort }
+if ($CertificatePath) {
+    if (-not (Test-Path $CertificatePath)) { throw "Certificate not found: $CertificatePath" }
+    $tls.CertificatePath = (Resolve-Path $CertificatePath).Path
+    if ($CertificatePassword) { $tls.CertificatePassword = $CertificatePassword }
+}
+$settings.ThisIsATrap | Add-Member -NotePropertyName Tls -NotePropertyValue ([pscustomobject]$tls) -Force
 $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath -Encoding UTF8
 
 # ---------------------------------------------------------------------------
@@ -171,11 +187,18 @@ if (-not (Get-Website -Name $SiteName)) {
     Set-ItemProperty "IIS:\Sites\$SiteName" -Name bindings -Value @{ protocol = 'http'; bindingInformation = "*:${HttpPort}:$HostName" }
 }
 Set-ItemProperty "IIS:\Sites\$SiteName" -Name applicationDefaults.preloadEnabled -Value $true  # Warm up on start (Application Initialization)
+# Application Initialization requests the liveness endpoint when the pool starts, so the app (and SMTP) come up before any user visits.
+$initFilter = 'system.webServer/applicationInitialization'
+Clear-WebConfiguration -PSPath "IIS:\Sites\$SiteName" -Filter "$initFilter/add" -ErrorAction SilentlyContinue
+Add-WebConfigurationProperty -PSPath "IIS:\Sites\$SiteName" -Filter $initFilter -Name '.' -Value @{ initializationPage = '/healthz' }
 
 # ---------------------------------------------------------------------------
 if (-not $SkipFirewall) {
     Step 'Opening firewall'
-    foreach ($rule in @(@{ Name = 'ThisIsATrap SMTP'; Port = $SmtpPort }, @{ Name = 'ThisIsATrap Web'; Port = $HttpPort })) {
+    $rules = @(@{ Name = 'ThisIsATrap SMTP'; Port = $SmtpPort }, @{ Name = 'ThisIsATrap Web'; Port = $HttpPort })
+    if ($SmtpsPort -gt 0) { $rules += @{ Name = 'ThisIsATrap SMTPS'; Port = $SmtpsPort } }
+    else { Get-NetFirewallRule -DisplayName 'ThisIsATrap SMTPS' -ErrorAction SilentlyContinue | Remove-NetFirewallRule }
+    foreach ($rule in $rules) {
         Get-NetFirewallRule -DisplayName $rule.Name -ErrorAction SilentlyContinue | Remove-NetFirewallRule
         New-NetFirewallRule -DisplayName $rule.Name -Direction Inbound -Protocol TCP -LocalPort $rule.Port -Action Allow -Profile Domain, Private | Out-Null
     }
@@ -188,20 +211,30 @@ if ((Get-WebsiteState -Name $SiteName).Value -ne 'Started') { Start-Website -Nam
 $url = "http://$(if ($HostName) { $HostName } else { 'localhost' }):$HttpPort/"
 
 $ok = $false
+$ready = $null
 for ($i = 0; $i -lt 30 -and -not $ok; $i++) {
     try {
-        $s = Invoke-RestMethod "${url}api/settings" -TimeoutSec 5
-        if ($s.smtp.status -like 'listening*') { $ok = $true } else { Start-Sleep 1 }
-    } catch { Start-Sleep 1 }
+        # /readyz returns 200 once SMTP is listening, the database answers and the data folder is writable (503 otherwise).
+        $ready = Invoke-RestMethod "${url}readyz" -TimeoutSec 5
+        $ok = $true
+    } catch {
+        if ($_.ErrorDetails.Message) { try { $ready = $_.ErrorDetails.Message | ConvertFrom-Json } catch { } }
+        Start-Sleep 1
+    }
 }
 
 Write-Host ''
 if ($ok) {
     Write-Host "ThisIsATrap is running." -ForegroundColor Green
     Write-Host "  Web UI : $url"
-    Write-Host "  SMTP   : $($env:COMPUTERNAME):$SmtpPort  (no auth / no TLS; any credentials accepted)"
+    Write-Host "  Status : ${url}#status   (probes: ${url}healthz, ${url}readyz, ${url}api/status)"
+    if ($ready.status -eq 'Degraded') { Write-Warning "Ready but degraded: $(($ready.checks | Where-Object status -ne 'Healthy' | ForEach-Object { "$($_.name): $($_.description)" }) -join '; ')" }
+    $tlsNote = @(if ($StartTls) { 'STARTTLS' }; if ($SmtpsPort -gt 0) { "SMTPS on $SmtpsPort" }) -join ', '
+    Write-Host "  SMTP   : $($env:COMPUTERNAME):$SmtpPort  (any credentials accepted; TLS: $(if ($tlsNote) { $tlsNote } else { 'off' }))"
+    if ($tlsNote -and -not $CertificatePath) { Write-Host "  Cert   : self-signed, download it from ${url}api/tls/certificate" }
     Write-Host "  Data   : $DataPath"
     Write-Host "  Test   : & '$repoRoot\tools\Send-TestMail.ps1' -Port $SmtpPort -Count 3"
 } else {
-    Write-Warning "The site started but the SMTP listener did not report 'listening' yet. Check $url and the Windows Event Log (Application, source 'IIS AspNetCore Module V2')."
+    $failing = if ($ready.checks) { ($ready.checks | Where-Object status -eq 'Unhealthy' | ForEach-Object { "$($_.name): $($_.description)" }) -join '; ' } else { 'no response' }
+    Write-Warning "The site started but is not ready ($failing). Check ${url}#status and the Windows Event Log (Application, source 'IIS AspNetCore Module V2')."
 }

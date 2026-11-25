@@ -22,12 +22,18 @@
             </div>
             <nav class="sidebar-nav">
                 <div class="nav-section">Mailbox</div>
-                <button type="button" class="nav-item-link active" data-folder="all"><i class="i i-inbox"></i> Inbox <span class="nav-count" id="count-all">0</span></button>
+                <button type="button" class="nav-item-link active" data-folder="all"><i class="i i-mail"></i> All messages <span class="nav-count" id="count-all">0</span></button>
                 <button type="button" class="nav-item-link" data-folder="unread"><i class="i i-dot-circle"></i> Unread <span class="nav-count" id="count-unread">0</span></button>
                 <button type="button" class="nav-item-link" data-folder="attachments"><i class="i i-paperclip"></i> With attachments</button>
 
+                <div class="nav-section nav-section-row">Inboxes <button type="button" class="nav-add" data-action="new-inbox" title="New inbox" aria-label="New inbox"><i class="i i-plus"></i></button></div>
+                <div id="inbox-nav"></div>
+
                 <div class="nav-section">System</div>
+                <button type="button" class="nav-item-link" data-view="status"><i class="i i-activity"></i> Status &amp; health <span class="nav-health" id="nav-health"></span></button>
                 <button type="button" class="nav-item-link" data-action="settings"><i class="i i-settings"></i> Settings &amp; auto-purge</button>
+                <button type="button" class="nav-item-link" data-action="webhooks"><i class="i i-webhook"></i> Webhooks</button>
+                <button type="button" class="nav-item-link" data-action="smtp-rules"><i class="i i-alert"></i> Error simulation</button>
                 <button type="button" class="nav-item-link" data-action="connect"><i class="i i-info"></i> How to connect</button>
             </nav>
             <div class="sidebar-footer">
@@ -61,8 +67,9 @@
             <div class="mail" id="mail">
                 <section class="pane list-pane" aria-label="Messages">
                     <div class="pane-header">
-                        <h2 id="folder-title">Inbox</h2>
+                        <h2 id="folder-title">All inboxes</h2>
                         <span class="meta" id="list-meta"></span>
+                        <button type="button" class="icon-btn icon-btn-sm" data-action="inbox-settings" id="inbox-settings-btn" title="Inbox settings" hidden><i class="i i-settings"></i></button>
                     </div>
                     <div class="msg-list" id="msg-list"></div>
                 </section>
@@ -71,6 +78,8 @@
                     <div class="reader" id="reader"></div>
                 </section>
             </div>
+
+            <section class="status-view" id="status-view" aria-label="Status and health" hidden></section>
         </div>
     </div>
 

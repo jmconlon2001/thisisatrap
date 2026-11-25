@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Net;
+using System.Security.Authentication;
 using Microsoft.Extensions.Options;
 using MimeKit;
 using SmtpServer;
@@ -18,36 +19,63 @@ public sealed class SmtpListenerService(
     IOptions<TrapOptions> options,
     MailStore store,
     EventHub events,
+    Health.RuntimeStats stats,
+    SmtpTls tls,
+    SmtpRules rules,
+    WebhookService webhooks,
+    TimeProvider time,
     ILogger<SmtpListenerService> log) : BackgroundService
 {
-    public static string Status { get; private set; } = "starting";
+    private const SslProtocols Protocols = SslProtocols.Tls12 | SslProtocols.Tls13;
+
+    /// <summary>Builds the server options: the main endpoint (with STARTTLS when enabled) plus an optional implicit-TLS endpoint.</summary>
+    private ISmtpServerOptions BuildOptions(TrapOptions o)
+    {
+        var cert = tls.Certificate; // null when TLS is off
+        var builder = new SmtpServerOptionsBuilder()
+            .ServerName(o.ServerName)
+            .MaxMessageSize(o.MaxMessageSizeMb * 1024 * 1024)
+            .Endpoint(b =>
+            {
+                b.Endpoint(new IPEndPoint(IPAddress.Any, o.SmtpPort))
+                    .AuthenticationRequired(false)
+                    .AllowUnsecureAuthentication(true);
+                if (o.Tls.StartTls && cert is not null) b.Certificate(cert).SupportedSslProtocols(Protocols);
+            });
+        if (o.Tls.SmtpsPort is { } smtps && cert is not null)
+        {
+            builder.Endpoint(b => b
+                .Endpoint(new IPEndPoint(IPAddress.Any, smtps))
+                .IsSecure(true)
+                .Certificate(cert)
+                .SupportedSslProtocols(Protocols)
+                .AuthenticationRequired(false)
+                .AllowUnsecureAuthentication(true));
+        }
+        return builder.Build();
+    }
+
+    public static string ListeningStatus(TrapOptions o) =>
+        $"listening on port {o.SmtpPort}" + (o.Tls.StartTls ? " (STARTTLS)" : "") + (o.Tls.SmtpsPort is { } p ? $", {p} (TLS)" : "");
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var o = options.Value;
-        var serverOptions = new SmtpServerOptionsBuilder()
-            .ServerName(o.ServerName)
-            .MaxMessageSize(o.MaxMessageSizeMb * 1024 * 1024)
-            .Endpoint(b => b
-                .Endpoint(new IPEndPoint(IPAddress.Any, o.SmtpPort))
-                .AuthenticationRequired(false)
-                .AllowUnsecureAuthentication(true))
-            .Build();
-
         var services = new SmtpServer.ComponentModel.ServiceProvider();
-        services.Add(new TrapMessageStore(store, events, log));
+        services.Add(new TrapMessageStore(store, events, stats, webhooks, o.AutoCreateInboxes, log));
         services.Add(new AcceptAnyUser());
+        services.Add(new SmtpRuleFilter(rules, events, stats, time, log));
 
         // IIS can briefly run the old and new worker side by side during a recycle, so the port
         // may still be held for a moment. Keep retrying instead of giving up.
         var attempt = 0;
         while (!stoppingToken.IsCancellationRequested)
         {
-            var server = new SmtpServer.SmtpServer(serverOptions, services);
             try
             {
-                log.LogInformation("SMTP listener starting on port {Port}", o.SmtpPort);
-                Status = $"listening on port {o.SmtpPort}";
+                var server = new SmtpServer.SmtpServer(BuildOptions(o), services);
+                log.LogInformation("SMTP listener starting: {Status}", ListeningStatus(o));
+                stats.SmtpStatus = ListeningStatus(o);
                 await server.StartAsync(stoppingToken);
                 return;
             }
@@ -58,7 +86,7 @@ public sealed class SmtpListenerService(
             catch (Exception ex)
             {
                 attempt++;
-                Status = $"error: {ex.Message}";
+                stats.SmtpStatus = $"error: {ex.Message}";
                 log.LogError(ex, "SMTP listener failed on port {Port} (attempt {Attempt}); retrying", o.SmtpPort, attempt);
                 try { await Task.Delay(TimeSpan.FromSeconds(Math.Min(30, 2 * attempt)), stoppingToken); }
                 catch (OperationCanceledException) { return; }
@@ -72,7 +100,7 @@ public sealed class SmtpListenerService(
             => Task.FromResult(true);
     }
 
-    private sealed class TrapMessageStore(MailStore store, EventHub events, ILogger log) : MessageStore
+    private sealed class TrapMessageStore(MailStore store, EventHub events, Health.RuntimeStats stats, WebhookService webhooks, bool autoCreateInboxes, ILogger log) : MessageStore
     {
         public override async Task<SmtpResponse> SaveAsync(ISessionContext context, IMessageTransaction transaction, ReadOnlySequence<byte> buffer, CancellationToken cancellationToken)
         {
@@ -90,6 +118,17 @@ public sealed class SmtpListenerService(
                 var clientIp = context.Properties.TryGetValue(EndpointListener.RemoteEndPointKey, out var ep) && ep is IPEndPoint ip
                     ? ip.Address.ToString() : "";
 
+                // Inbox routing: SMTP username first, then the X-Trap-Inbox header, else Default.
+                var routingKey = context.Authentication is { IsAuthenticated: true, User: { Length: > 0 } user }
+                    ? user
+                    : message.Headers[Inbox.RoutingHeader];
+                var (inbox, created) = store.ResolveInbox(routingKey, autoCreateInboxes);
+                if (created)
+                {
+                    log.LogInformation("Created inbox {Slug}", inbox.Slug);
+                    events.Publish("inboxes");
+                }
+
                 var from = MessageParser.Addresses(message.From);
                 var to = MessageParser.Addresses(message.To);
                 var record = new MessageRecord(
@@ -105,18 +144,23 @@ public sealed class SmtpListenerService(
                     false,
                     envelopeFrom,
                     envelopeTo,
-                    clientIp);
+                    clientIp,
+                    inbox.Id);
 
                 await store.AddAsync(record, raw, cancellationToken);
-                log.LogInformation("Trapped message {Id} from {From} to {To}: {Subject}", record.Id, record.From, record.To, record.Subject);
+                stats.MessageReceived();
+                log.LogInformation("Trapped message {Id} in {Inbox} from {From} to {To}: {Subject}", record.Id, inbox.Slug, record.From, record.To, record.Subject);
 
-                events.Publish("message", new MessageSummary(record.Id, record.ReceivedUtc, record.From, record.To, record.Subject,
-                    record.Preview, record.Size, record.AttachmentCount, false));
+                var summary = new MessageSummary(record.Id, record.ReceivedUtc, record.From, record.To, record.Subject,
+                    record.Preview, record.Size, record.AttachmentCount, false, inbox.Slug);
+                events.Publish("message", summary);
+                webhooks.Notify(summary, inbox);
                 return SmtpResponse.Ok;
             }
             catch (Exception ex)
             {
                 log.LogError(ex, "Failed to store incoming message");
+                stats.MessageRejected();
                 return new SmtpResponse(SmtpReplyCode.TransactionFailed, "Could not store message");
             }
         }

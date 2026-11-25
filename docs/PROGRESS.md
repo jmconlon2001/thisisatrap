@@ -7,15 +7,15 @@ Working branch: `feature/mailtrap-parity`. The plan adds the features ThisIsATra
 | 0 | Docker support | Done |
 | 1 | Test projects, coverage gate, git hooks, CI | Done |
 | 2 | Rebrand to **ThisIsATrap** (UI, code, config, Docker, IIS; legacy `MailTrap` config, database and IIS site are migrated) | Done |
-| 3 | Health and status: `/healthz`, `/readyz`, `/api/status`, a status page, Docker and IIS health checks | Next |
-| 4 | Multiple inboxes | |
-| 5 | Responsive preview | |
-| 6 | HTML check (caniemail) | |
-| 7 | Spam & content analysis | |
-| 8 | Link & image checker | |
-| 9 | STARTTLS / SMTPS | |
-| 10 | Webhooks & error simulation | |
-| 11 | Security audit & hardening | |
+| 3 | Health and status: `/healthz`, `/readyz`, `/api/status`, a status page, Docker and IIS health checks | Done |
+| 4 | Multiple inboxes | Done |
+| 5 | Responsive preview | Done |
+| 6 | HTML check (caniemail) | Done |
+| 7 | Spam & content analysis | Done |
+| 8 | Link & image checker | Done |
+| 9 | STARTTLS / SMTPS | Done |
+| 10 | Webhooks & error simulation | Done |
+| 11 | Security audit & hardening | Next |
 | 12 | README rewrite with lots of screenshots, redeploy IIS (+ Docker), open PR | |
 
 ## Resuming after a pause
@@ -24,6 +24,7 @@ Working branch: `feature/mailtrap-parity`. The plan adds the features ThisIsATra
 3. Before committing a stage, `./tools/Test-Coverage.ps1` must pass.
 
 ## Notes
+- Stages 0–2 were merged to `main` in PR #1 (at your request). Later stages continue on the branch.
 - Tests run on Microsoft.Testing.Platform, set by `test.runner` in `global.json`.
   - Unit tests only: `dotnet test --project tests/ThisIsATrap.UnitTests`
   - Everything with coverage: `./tools/Test-Coverage.ps1`
