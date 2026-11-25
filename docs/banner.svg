@@ -35,7 +35,7 @@
       <path d="M-35 -23 0 4 35 -23" fill="none" stroke="#2a5d7b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
     </g>
   </g>
-  <text x="340" y="148" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="68" font-weight="700" fill="#ffffff" letter-spacing="-1">MailTrap</text>
+  <text x="340" y="148" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="68" font-weight="700" fill="#ffffff" letter-spacing="-1">ThisIsATrap</text>
   <text x="342" y="196" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="24" font-weight="500" fill="#aab4c8">A local SMTP sink and web inbox for dev and test</text>
   <rect x="342" y="222" width="300" height="4" rx="2" fill="url(#accent)" />
 </svg>

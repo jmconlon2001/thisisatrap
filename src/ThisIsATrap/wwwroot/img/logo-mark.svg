@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- ThisIsATrap app icon: envelope caught in an orbit, on a deep-space tile -->
+  <defs>
+    <radialGradient id="mt-bg" cx="70%" cy="20%" r="95%">
+      <stop offset="0%" stop-color="#16203a" />
+      <stop offset="60%" stop-color="#0c1122" />
+      <stop offset="100%" stop-color="#080c18" />
+    </radialGradient>
+    <linearGradient id="mt-card" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d4e0ec" />
+      <stop offset="100%" stop-color="#bccddf" />
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="26" fill="url(#mt-bg)" />
+  <circle cx="96" cy="20" r="1.4" fill="#ffffff" opacity=".8" />
+  <circle cx="22" cy="98" r="0.9" fill="#ffffff" opacity=".5" />
+  <g transform="translate(60 60) scale(.82) translate(-60 -60)">
+    <circle cx="60" cy="60" r="53.1" fill="none" stroke="#2a5d7b" stroke-width="6.2" />
+    <circle cx="60" cy="60" r="36.9" fill="none" stroke="#b07cf0" stroke-width="9" />
+    <g transform="rotate(-8 60 60)">
+      <rect x="40" y="46" width="40" height="28" rx="3" fill="url(#mt-card)" />
+      <path d="M41.5 48 60 62 78.5 48" fill="none" stroke="#2a5d7b" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" />
+    </g>
+  </g>
+</svg>

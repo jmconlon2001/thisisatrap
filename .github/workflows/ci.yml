@@ -26,7 +26,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - name: Build
-        run: dotnet build MailTrap.sln -c Release -warnaserror -nologo
+        run: dotnet build ThisIsATrap.sln -c Release -warnaserror -nologo
       - name: Tests + coverage gate (80%)
         shell: pwsh
         run: ./tools/Test-Coverage.ps1 -Configuration Release -NoBuild -Threshold 80
@@ -51,8 +51,8 @@ jobs:
           dotnet-version: 10.0.x
       - name: Vulnerable packages
         run: |
-          dotnet restore MailTrap.sln
-          out=$(dotnet list MailTrap.sln package --vulnerable --include-transitive)
+          dotnet restore ThisIsATrap.sln
+          out=$(dotnet list ThisIsATrap.sln package --vulnerable --include-transitive)
           echo "$out"
           if echo "$out" | grep -q 'has the following vulnerable packages'; then exit 1; fi
       - uses: github/codeql-action/init@v3

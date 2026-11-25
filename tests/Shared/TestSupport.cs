@@ -1,16 +1,16 @@
-using MailTrap;
+using ThisIsATrap;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MimeKit;
 
-namespace MailTrap.Tests;
+namespace ThisIsATrap.Tests;
 
 /// <summary>A unique temp folder that is deleted when disposed.</summary>
 public sealed class TempDir : IDisposable
 {
-    public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "mailtrap-tests", Guid.NewGuid().ToString("N"));
+    public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "thisisatrap-tests", Guid.NewGuid().ToString("N"));
 
     public TempDir() => Directory.CreateDirectory(Path);
 
@@ -27,7 +27,7 @@ public sealed class TestEnv(string root) : IWebHostEnvironment
 {
     public string WebRootPath { get; set; } = root;
     public IFileProvider WebRootFileProvider { get; set; } = new NullFileProvider();
-    public string ApplicationName { get; set; } = "MailTrap";
+    public string ApplicationName { get; set; } = "ThisIsATrap";
     public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     public string ContentRootPath { get; set; } = root;
     public string EnvironmentName { get; set; } = "Test";
@@ -43,9 +43,9 @@ public sealed class FakeTime(DateTimeOffset now) : TimeProvider
 
 public static class TestStore
 {
-    public static MailStore Create(TempDir dir, TimeProvider? time = null, Action<MailTrapOptions>? configure = null)
+    public static MailStore Create(TempDir dir, TimeProvider? time = null, Action<TrapOptions>? configure = null)
     {
-        var options = new MailTrapOptions { DataPath = dir.Path };
+        var options = new TrapOptions { DataPath = dir.Path };
         configure?.Invoke(options);
         return new MailStore(Options.Create(options), new TestEnv(dir.Path), NullLogger<MailStore>.Instance, time);
     }

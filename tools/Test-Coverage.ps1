@@ -19,13 +19,13 @@ if (Test-Path $results) { Remove-Item $results -Recurse -Force }
 Push-Location $root
 try {
     if (-not $NoBuild) {
-        dotnet build MailTrap.sln -c $Configuration -warnaserror -nologo -v q
+        dotnet build ThisIsATrap.sln -c $Configuration -warnaserror -nologo -v q
         if ($LASTEXITCODE) { throw 'Build failed.' }
     }
     dotnet tool restore | Out-Null
 
     $failed = $false
-    foreach ($project in 'MailTrap.UnitTests', 'MailTrap.IntegrationTests') {
+    foreach ($project in 'ThisIsATrap.UnitTests', 'ThisIsATrap.IntegrationTests') {
         dotnet test --project "tests/$project" -c $Configuration --no-build `
             --results-directory (Join-Path $results $project) `
             --report-trx --coverage --coverage-output-format cobertura --coverage-output "$project.cobertura.xml"
@@ -35,7 +35,7 @@ try {
 
     $reports = (Get-ChildItem $results -Recurse -Filter '*.cobertura.xml').FullName -join ';'
     dotnet reportgenerator "-reports:$reports" "-targetdir:$(Join-Path $results 'coverage')" `
-        '-reporttypes:TextSummary;MarkdownSummaryGithub;Html' '-assemblyfilters:+MailTrap' | Out-Null
+        '-reporttypes:TextSummary;MarkdownSummaryGithub;Html' '-assemblyfilters:+ThisIsATrap' | Out-Null
 
     $summary = Get-Content (Join-Path $results 'coverage/Summary.txt') -Raw
     $line = [regex]::Match($summary, 'Line coverage:\s*([\d.]+)%').Groups[1].Value

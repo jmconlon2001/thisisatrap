@@ -7,7 +7,7 @@ if command -v pwsh >/dev/null 2>&1; then ps=pwsh; else ps=powershell; fi
 $ps -NoProfile -ExecutionPolicy Bypass -File tools/Test-Coverage.ps1
 
 echo "pre-push: vulnerable package scan"
-out=$(dotnet list MailTrap.sln package --vulnerable --include-transitive 2>&1)
+out=$(dotnet list ThisIsATrap.sln package --vulnerable --include-transitive 2>&1)
 if echo "$out" | grep -q 'has the following vulnerable packages'; then
     echo "$out" >&2
     echo "pre-push: vulnerable packages found" >&2

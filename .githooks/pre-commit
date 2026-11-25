@@ -13,6 +13,6 @@ fi
 # Only build and test when code or tests changed.
 if git diff --cached --name-only | grep -Eq '\.(cs|csproj|sln|json|html|js|css)$'; then
     echo "pre-commit: build + unit tests"
-    dotnet build MailTrap.sln -warnaserror -nologo -v q
-    dotnet test --project tests/MailTrap.UnitTests --no-build --filter-trait "Category=Unit"
+    dotnet build ThisIsATrap.sln -warnaserror -nologo -v q
+    dotnet test --project tests/ThisIsATrap.UnitTests --no-build --filter-trait "Category=Unit"
 fi

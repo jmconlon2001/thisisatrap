@@ -2,8 +2,8 @@ bin/
 obj/
 .vs/
 *.user
-src/MailTrap/App_Data/
-src/MailTrap/logs/
+src/ThisIsATrap/App_Data/
+src/ThisIsATrap/logs/
 deploy/deploy.log
 TestResults/
 

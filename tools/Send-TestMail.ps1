@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Sends test messages to MailTrap (HTML body, inline image, and attachments) using raw SMTP.
+    Sends test messages to ThisIsATrap (HTML body, inline image, and attachments) using raw SMTP.
 .EXAMPLE
     .\Send-TestMail.ps1 -Server localhost -Port 25 -Count 3
 #>
