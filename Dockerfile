@@ -10,7 +10,7 @@ RUN dotnet restore src/ThisIsATrap/ThisIsATrap.csproj -a $TARGETARCH
 COPY src/ThisIsATrap/ src/ThisIsATrap/
 RUN dotnet publish src/ThisIsATrap/ThisIsATrap.csproj -c Release -a $TARGETARCH -o /app --no-restore --self-contained false /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0
+FROM mcr.microsoft.com/dotnet/aspnet:11.0
 WORKDIR /app
 
 # Stored mail lives in /data. Create it owned by the image's non-root user so a
