@@ -1,0 +1,18 @@
+services:
+  thisisatrap:
+    build: .
+    image: thisisatrap:latest
+    container_name: thisisatrap
+    restart: unless-stopped
+    ports:
+      - "8025:8080"   # web UI
+      - "25:2525"     # SMTP (change the left side if 25 is taken on the host)
+    environment:
+      ThisIsATrap__PublicSmtpPort: "25"   # keep in sync with the host SMTP port above
+      ThisIsATrap__ServerName: "thisisatrap.local"
+      ThisIsATrap__MaxMessageSizeMb: "50"
+    volumes:
+      - thisisatrap-data:/data
+
+volumes:
+  thisisatrap-data:

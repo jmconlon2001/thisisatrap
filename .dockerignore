@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+**/.vs/
+**/*.user
+src/ThisIsATrap/App_Data/
+src/ThisIsATrap/logs/
+.git/
+docs/
+deploy/
+tools/
+*.md

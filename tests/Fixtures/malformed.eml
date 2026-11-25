@@ -1,0 +1,15 @@
+From: broken@example.com
+To: user@example.com
+Subject: Broken boundary
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="abc"
+
+--abc
+Content-Type: text/plain
+
+First part with no closing boundary
+--abc
+Content-Type: application/octet-stream
+Content-Transfer-Encoding: base64
+
+!!!not base64!!!

@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build
+        run: dotnet build ThisIsATrap.sln -c Release -warnaserror -nologo
+      - name: Tests + coverage gate (80%)
+        shell: pwsh
+        run: ./tools/Test-Coverage.ps1 -Configuration Release -NoBuild -Threshold 80
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: TestResults/
+          if-no-files-found: ignore
+
+  security:
+    name: Security scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Vulnerable packages
+        run: |
+          dotnet restore ThisIsATrap.sln
+          out=$(dotnet list ThisIsATrap.sln package --vulnerable --include-transitive)
+          echo "$out"
+          if echo "$out" | grep -q 'has the following vulnerable packages'; then exit 1; fi
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: csharp, javascript-typescript
+          build-mode: none
+      - uses: github/codeql-action/analyze@v3
+
+  docker:
+    name: Docker smoke test
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t thisisatrap:ci .
+      - name: Run container
+        run: docker run -d --name trap -p 8025:8080 -p 2525:2525 thisisatrap:ci
+      - name: Wait for SMTP listener
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fs http://localhost:8025/api/settings | grep -q '"status":"listening'; then exit 0; fi
+            sleep 1
+          done
+          docker logs trap; exit 1
+      - name: Send a message and find it
+        run: |
+          python3 - <<'EOF'
+          import smtplib
+          from email.message import EmailMessage
+          m = EmailMessage(); m["From"] = "ci@example.com"; m["To"] = "user@example.com"; m["Subject"] = "ci-smoke"
+          m.set_content("hello from CI")
+          with smtplib.SMTP("localhost", 2525) as s: s.send_message(m)
+          EOF
+          sleep 1
+          curl -fs "http://localhost:8025/api/messages?q=ci-smoke" | tee /dev/stderr | grep -q '"subject":"ci-smoke"'
+      - name: Container logs
+        if: always()
+        run: docker logs trap

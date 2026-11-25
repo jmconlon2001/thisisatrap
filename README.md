@@ -1,16 +1,17 @@
 <p align="center">
-  <img src="docs/banner.svg" alt="MailTrap" width="100%">
+  <img src="docs/banner.svg" alt="ThisIsATrap" width="100%">
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/.NET-10-512BD4?style=flat-square" alt=".NET 10">
   <img src="https://img.shields.io/badge/host-IIS-0078D4?style=flat-square" alt="IIS">
+  <img src="https://img.shields.io/badge/docker-ready-2496ED?style=flat-square" alt="Docker">
   <img src="https://img.shields.io/badge/deepspace-enabled-purple?style=flat-square" alt="Theme">
 </p>
 
 ---
 
-MailTrap is a **real SMTP server that never delivers anything**. Point your apps at it during development and testing. It accepts every message, stores it locally, and shows it in a web mail client with live toast alerts. It's for internal use, so it has no sign-in.
+ThisIsATrap is a **real SMTP server that never delivers anything**. Point your apps at it during development and testing. It accepts every message, stores it locally, and shows it in a web mail client with live toast alerts. It's for internal use, so it has no sign-in.
 
 - **Looks like a real mail server to clients.** It speaks proper SMTP (EHLO, PIPELINING, 8BITMIME, AUTH PLAIN/LOGIN) and accepts any username and password, or none.
 - **Nothing ever leaves.** There is no relay code at all: messages are written to disk and that's the end of the line.
@@ -22,18 +23,19 @@ MailTrap is a **real SMTP server that never delivers anything**. Point your apps
 - Light and dark themes, a phone-friendly layout, and keyboard shortcuts.
 
 <p align="center">
-  <img src="docs/images/inbox-dark.png" alt="MailTrap inbox (dark theme)" width="900">
+  <img src="docs/images/inbox-dark.png" alt="ThisIsATrap inbox (dark theme)" width="900">
 </p>
 
 <details>
 <summary>Light theme</summary>
-<p align="center"><img src="docs/images/inbox-light.png" alt="MailTrap inbox (light theme)" width="900"></p>
+<p align="center"><img src="docs/images/inbox-light.png" alt="ThisIsATrap inbox (light theme)" width="900"></p>
 </details>
 
 ## Contents
 
 - [Quick start](#quick-start)
 - [Deploy to IIS](#deploy-to-iis)
+- [Run with Docker](#run-with-docker)
 - [Connecting your apps](#connecting-your-apps)
 - [Auto-purge](#auto-purge)
 - [Configuration](#configuration)
@@ -47,7 +49,7 @@ MailTrap is a **real SMTP server that never delivers anything**. Point your apps
 Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
 
 ```powershell
-cd src/MailTrap
+cd src/ThisIsATrap
 dotnet run
 ```
 
@@ -65,31 +67,58 @@ Send some realistic test mail (HTML body, inline image, CSV and PDF attachments,
 Run once from an **elevated** PowerShell on the target server:
 
 ```powershell
-.\deploy\Deploy-MailTrap.ps1                                             # UI on :8025, SMTP on :25
-.\deploy\Deploy-MailTrap.ps1 -HttpPort 80 -HostName mailtrap.dev.local   # custom binding
-.\deploy\Deploy-MailTrap.ps1 -SmtpPort 2525                              # if 25 is taken
+.\deploy\Deploy-ThisIsATrap.ps1                                             # UI on :8025, SMTP on :25
+.\deploy\Deploy-ThisIsATrap.ps1 -HttpPort 80 -HostName thisisatrap.dev.local   # custom binding
+.\deploy\Deploy-ThisIsATrap.ps1 -SmtpPort 2525                              # if 25 is taken
 ```
 
 The script is idempotent. Re-run it to upgrade; stored mail and settings are kept. It:
 
 1. Enables IIS, including **Application Initialization**.
 2. Installs the **ASP.NET Core 10 Hosting Bundle** with winget if it's missing.
-3. Publishes the app to `C:\inetpub\MailTrap` and creates a `MailTrap` app pool and site.
+3. Publishes the app to `C:\inetpub\ThisIsATrap` and creates a `ThisIsATrap` app pool and site.
 4. Keeps the SMTP listener alive. The pool is set to `AlwaysRunning`, with no idle timeout, no scheduled recycle and no overlapping recycle, and the site preloads when IIS starts. With IIS defaults, the listener would stop whenever nobody was viewing the site.
-5. Grants the app pool modify rights on the data folder (`C:\inetpub\MailTrapData`).
+5. Grants the app pool modify rights on the data folder (`C:\inetpub\ThisIsATrapData`).
 6. Opens Windows Firewall for the HTTP and SMTP ports on the Domain and Private profiles.
 7. Waits until the SMTP listener reports `listening`, then prints the URLs.
 
 | Parameter | Default | |
 | --- | --- | --- |
-| `-SiteName` | `MailTrap` | IIS site and app pool name |
-| `-SitePath` | `C:\inetpub\MailTrap` | App files |
-| `-DataPath` | `C:\inetpub\MailTrapData` | SQLite index and `.eml` files |
+| `-SiteName` | `ThisIsATrap` | IIS site and app pool name |
+| `-SitePath` | `C:\inetpub\ThisIsATrap` | App files |
+| `-DataPath` | `C:\inetpub\ThisIsATrapData` | SQLite index and `.eml` files |
 | `-HttpPort` | `8025` | Web UI port |
 | `-HostName` | *(none)* | Optional host header for the binding |
 | `-SmtpPort` | `25` | SMTP listen port |
 | `-MaxMessageSizeMb` | `50` | Larger messages are rejected |
 | `-SkipFirewall` | off | Don't create firewall rules |
+
+## Run with Docker
+
+Runs on any Linux Docker host (or Docker Desktop). From the repo root:
+
+```bash
+docker compose up -d --build
+```
+
+- Web UI: http://localhost:8025
+- SMTP: `localhost:25`
+- Mail and purge settings live in the `thisisatrap-data` volume, so they survive rebuilds.
+
+Or without Compose:
+
+```bash
+docker build -t thisisatrap .
+docker run -d --name thisisatrap --restart unless-stopped \
+  -p 8025:8080 -p 25:2525 \
+  -e ThisIsATrap__PublicSmtpPort=25 \
+  -v thisisatrap-data:/data \
+  thisisatrap
+```
+
+The container runs as a non-root user, which can't bind ports below 1024, so inside the container the web UI listens on `8080` and SMTP on `2525`. Map them to whatever host ports you like. If port 25 is already taken on the host, use something like `-p 2525:2525` and set `ThisIsATrap__PublicSmtpPort=2525`. `PublicSmtpPort` only changes the port the UI tells people to connect to.
+
+Any [configuration](#configuration) key can be set with an environment variable of the form `ThisIsATrap__<Key>`.
 
 ## Connecting your apps
 
@@ -104,18 +133,18 @@ The **How to connect** page in the UI shows ready-to-paste snippets for the curr
 
 ```csharp
 // .NET
-using var smtp = new SmtpClient("mailtrap-host", 25) { EnableSsl = false };
+using var smtp = new SmtpClient("trap-host", 25) { EnableSsl = false };
 smtp.Send("app@example.com", "user@example.com", "Hello", "Test body");
 ```
 
 ```js
 // Node (nodemailer)
-nodemailer.createTransport({ host: "mailtrap-host", port: 25, secure: false, ignoreTLS: true });
+nodemailer.createTransport({ host: "trap-host", port: 25, secure: false, ignoreTLS: true });
 ```
 
 ```python
 # Python
-smtplib.SMTP("mailtrap-host", 25).sendmail("app@example.com", ["user@example.com"], msg.as_string())
+smtplib.SMTP("trap-host", 25).sendmail("app@example.com", ["user@example.com"], msg.as_string())
 ```
 
 Recipients that are in the SMTP envelope but not in the `To`/`Cc` headers are shown as **Bcc**, so you can check who actually got a copy.
@@ -135,12 +164,12 @@ Rules are stored in the database, so they survive restarts and redeploys. Change
 
 ## Configuration
 
-Static settings live in `appsettings.json` under `MailTrap`. The deploy script writes the server-specific values.
+Static settings live in `appsettings.json` under `ThisIsATrap`. The deploy script writes the server-specific values.
 
 ```json
-"MailTrap": {
+"ThisIsATrap": {
   "SmtpPort": 25,
-  "ServerName": "mailtrap.local",
+  "ServerName": "thisisatrap.local",
   "MaxMessageSizeMb": 50,
   "DataPath": "App_Data"
 }
@@ -149,14 +178,15 @@ Static settings live in `appsettings.json` under `MailTrap`. The deploy script w
 | Key | Description |
 | --- | --- |
 | `SmtpPort` | SMTP listen port (all interfaces) |
+| `PublicSmtpPort` | Optional. The port shown in the UI when clients reach SMTP on a different port than it listens on, for example behind a Docker port mapping |
 | `ServerName` | Name announced in the SMTP greeting |
 | `MaxMessageSizeMb` | Size limit advertised via `SIZE` and enforced |
-| `DataPath` | Folder for `mailtrap.db` and `messages/*.eml`. Relative paths resolve against the app folder. |
+| `DataPath` | Folder for `thisisatrap.db` and `messages/*.eml`. Relative paths resolve against the app folder. |
 
 ## How it works
 
 ```
- your app ──SMTP──▶ SmtpListenerService ──▶ messages/<id>.eml  +  mailtrap.db (index)
+ your app ──SMTP──▶ SmtpListenerService ──▶ messages/<id>.eml  +  thisisatrap.db (index)
                           │
                           └──▶ EventHub ──SSE──▶ browser (toast + list update)
 
@@ -173,13 +203,14 @@ Static settings live in `appsettings.json` under `MailTrap`. The deploy script w
 
 | Path | |
 | --- | --- |
-| `src/MailTrap/Program.cs` | HTTP API and SSE endpoint |
-| `src/MailTrap/SmtpListenerService.cs` | SMTP server and message store |
-| `src/MailTrap/MailStore.cs` | SQLite index, `.eml` files, purge queries |
-| `src/MailTrap/MessageParser.cs` | MIME parsing, attachments, HTML preparation |
-| `src/MailTrap/PurgeService.cs` | Scheduled auto-purge |
-| `src/MailTrap/wwwroot/` | Web client |
-| `deploy/Deploy-MailTrap.ps1` | IIS install and upgrade |
+| `src/ThisIsATrap/Program.cs` | HTTP API and SSE endpoint |
+| `src/ThisIsATrap/SmtpListenerService.cs` | SMTP server and message store |
+| `src/ThisIsATrap/MailStore.cs` | SQLite index, `.eml` files, purge queries |
+| `src/ThisIsATrap/MessageParser.cs` | MIME parsing, attachments, HTML preparation |
+| `src/ThisIsATrap/PurgeService.cs` | Scheduled auto-purge |
+| `src/ThisIsATrap/wwwroot/` | Web client |
+| `deploy/Deploy-ThisIsATrap.ps1` | IIS install and upgrade |
+| `Dockerfile`, `docker-compose.yml` | Container build and run |
 | `tools/Send-TestMail.ps1` | Test mail sender (raw SMTP, optional AUTH) |
 
 ## HTTP API
@@ -204,7 +235,7 @@ Everything the UI does is available over plain HTTP, which is handy for automate
 
 ```powershell
 # e.g. assert an integration test sent a password-reset email
-$mail = Invoke-RestMethod "http://mailtrap-host:8025/api/messages?q=reset"
+$mail = Invoke-RestMethod "http://trap-host:8025/api/messages?q=reset"
 $mail.items[0].subject   # "Reset your password"
 ```
 
@@ -223,7 +254,7 @@ $mail.items[0].subject   # "Reset your password"
 | Symptom | Check |
 | --- | --- |
 | Sidebar says *SMTP error: …* | Another process holds the port (often the IIS 6 `SMTPSVC` service). Stop it, or redeploy with `-SmtpPort 2525`. |
-| Other machines can't connect | The firewall rules cover the Domain and Private profiles only. If the server's network is **Public**, run `Set-NetConnectionProfile -NetworkCategory Private` or `Set-NetFirewallRule -DisplayName "MailTrap SMTP","MailTrap Web" -Profile Any`. |
+| Other machines can't connect | The firewall rules cover the Domain and Private profiles only. If the server's network is **Public**, run `Set-NetConnectionProfile -NetworkCategory Private` or `Set-NetFirewallRule -DisplayName "ThisIsATrap SMTP","ThisIsATrap Web" -Profile Any`. |
 | Site returns 500.19 / 500.31 | The ASP.NET Core 10 Hosting Bundle is missing. Install it and run `iisreset`. |
-| Startup errors | Windows Event Log → Application, source *IIS AspNetCore Module V2*. Or set `stdoutLogEnabled="true"` in `C:\inetpub\MailTrap\web.config`. |
-| Mail stops arriving after a while | Make sure the `MailTrap` app pool is `AlwaysRunning` with idle timeout `0`. The deploy script sets this. |
+| Startup errors | Windows Event Log → Application, source *IIS AspNetCore Module V2*. Or set `stdoutLogEnabled="true"` in `C:\inetpub\ThisIsATrap\web.config`. |
+| Mail stops arriving after a while | Make sure the `ThisIsATrap` app pool is `AlwaysRunning` with idle timeout `0`. The deploy script sets this. |
