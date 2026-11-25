@@ -14,8 +14,8 @@ Working branch: `feature/mailtrap-parity`. The plan adds the features ThisIsATra
 | 7 | Spam & content analysis | Done |
 | 8 | Link & image checker | Done |
 | 9 | STARTTLS / SMTPS | Done |
-| 10 | Webhooks & error simulation | Next |
-| 11 | Security audit & hardening | |
+| 10 | Webhooks & error simulation | Done |
+| 11 | Security audit & hardening | Next |
 | 12 | README rewrite with lots of screenshots, redeploy IIS (+ Docker), open PR | |
 
 ## Resuming after a pause

@@ -717,6 +717,7 @@
             var ev; try { ev = JSON.parse(e.data); } catch (err) { return; }
             if (ev.type === 'message') onNewMessage(ev.payload);
             else if (ev.type === 'inboxes') reloadInboxesSoon();
+            else if (ev.type === 'rejected') rejectedToast(ev.payload);
             else if (ev.type === 'deleted') { removeLocal(ev.payload.id); if (state.selectedId === ev.payload.id) clearSelection(); }
             else if (ev.type === 'purged' || ev.type === 'changed') {
                 if (ev.type === 'purged' && ev.payload && ev.payload.removed) toast('Removed ' + ev.payload.removed + ' message' + (ev.payload.removed === 1 ? '' : 's'));
@@ -835,6 +836,130 @@
             .then(function () { return api('purge', { method: 'POST' }); })
             .then(function (r) { closeModal(); toast(r.removed ? 'Purged ' + r.removed + ' message' + (r.removed === 1 ? '' : 's') : 'Nothing to purge'); loadList(); })
             .catch(function (e) { toast('Purge failed: ' + e.message, 'error'); });
+    }
+
+    // ---------- webhooks ----------
+    function webhookRow(h) {
+        var opts = '<option value="">All inboxes</option>' + state.inboxes.map(function (i) {
+            return '<option value="' + esc(i.slug) + '"' + (h.inbox === i.slug ? ' selected' : '') + '>' + esc(i.name) + '</option>';
+        }).join('');
+        var last = h.lastDelivery;
+        return '<div class="editor-row hook-row" data-id="' + esc(h.id || '') + '">' +
+            '<label class="switch" title="Enabled"><input type="checkbox" class="h-enabled"' + (h.enabled !== false ? ' checked' : '') + ' /></label>' +
+            '<input class="form-control h-url" placeholder="https://ci.internal/hooks/mail" value="' + esc(h.url || '') + '" />' +
+            '<select class="form-control h-inbox">' + opts + '</select>' +
+            '<input class="form-control h-secret" type="password" autocomplete="new-password" placeholder="' + (h.hasSecret ? '•••••• (unchanged)' : 'Signing secret (optional)') + '" />' +
+            (h.id ? '<button type="button" class="btn btn-sm" data-action="test-webhook" title="Send a test notification now">Test</button>' : '<span></span>') +
+            '<button type="button" class="icon-btn icon-btn-sm danger" data-action="remove-row" title="Remove"><i class="i i-trash"></i></button>' +
+            (last ? '<div class="hook-status ' + (last.ok ? 'ok' : 'bad') + '">' + (last.ok ? 'Delivered' : 'Failed') + (last.httpStatus ? ' · HTTP ' + last.httpStatus : '') +
+                ' · ' + esc(ago(last.attemptedUtc)) + (last.attempts > 1 ? ' · ' + last.attempts + ' attempts' : '') + (last.error ? ' · ' + esc(last.error) : '') + '</div>' : '') +
+            '</div>';
+    }
+
+    function openWebhooks() {
+        api('settings/webhooks').then(function (hooks) {
+            openModal('Webhooks', 'i-webhook',
+                '<p style="margin-top:0">POST a JSON notification to your own endpoints whenever mail arrives, for example to wake a CI job waiting for an email. Webhooks make outbound HTTP calls only; mail is never sent anywhere.</p>' +
+                '<div id="hook-rows" class="editor-rows">' + (hooks.length ? hooks.map(webhookRow).join('') : '') + '</div>' +
+                '<button type="button" class="btn btn-sm" data-action="add-webhook" style="margin-top:.6rem"><i class="i i-plus"></i> Add webhook</button>' +
+                '<details class="kv-toggle" style="margin-top:1rem"><summary class="btn btn-sm btn-ghost" style="padding-left:0"><i class="i i-info"></i> Payload &amp; signature</summary>' +
+                '<pre class="cs-preview">POST &lt;your url&gt;\nContent-Type: application/json\nX-Trap-Event: message.received\nX-Trap-Signature: sha256=&lt;hex HMAC-SHA256 of the body with your secret&gt;\n\n' +
+                '{ "event": "message.received", "sentUtc": "…",\n  "inbox": { "slug": "billing-api", "name": "Billing API" },\n  "message": { "id", "receivedUtc", "from", "to", "subject", "preview", "size", "attachmentCount", "inbox" },\n  "urls": { "ui", "api", "raw" } }</pre>' +
+                '<div class="form-text">Failed deliveries are retried twice (after 1 s and 5 s). Private-network receivers are allowed; cloud metadata addresses are not.</div></details>',
+                '<button type="button" class="btn" data-close>Cancel</button><button type="button" class="btn btn-primary" data-action="save-webhooks"><i class="i i-check"></i> Save</button>');
+            var modal = document.querySelector('.sm-modal');
+            if (modal) modal.classList.add('sm-modal-wide');
+            if (!hooks.length) addWebhookRow();
+        }).catch(function (e) { toast('Could not load webhooks: ' + e.message, 'error'); });
+    }
+    function addWebhookRow() { $('hook-rows').insertAdjacentHTML('beforeend', webhookRow({})); }
+
+    function readWebhooks() {
+        return [].map.call(document.querySelectorAll('.hook-row'), function (row) {
+            var secret = row.querySelector('.h-secret').value;
+            return {
+                id: row.getAttribute('data-id') || null,
+                url: row.querySelector('.h-url').value.trim(),
+                inbox: row.querySelector('.h-inbox').value || null,
+                enabled: row.querySelector('.h-enabled').checked,
+                secret: secret === '' ? null : secret,   // empty = keep the stored secret
+            };
+        }).filter(function (h) { return h.url; });
+    }
+
+    function saveWebhooks(then) {
+        return fetch('api/settings/webhooks', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(readWebhooks()) })
+            .then(function (r) { return r.json().then(function (b) { if (!r.ok) throw new Error(b.error || r.status); return b; }); })
+            .then(function (hooks) { if (then) then(hooks); else { closeModal(); toast('Webhooks saved'); } return hooks; })
+            .catch(function (e) { toast('Save failed: ' + e.message, 'error'); });
+    }
+
+    function testWebhook(row) {
+        var url = row.querySelector('.h-url').value.trim();
+        // Save first so the test uses exactly what's on screen.
+        saveWebhooks(function (hooks) {
+            var hook = hooks.find(function (h) { return h.url === url; });
+            if (!hook) return;
+            toast('Sending test notification…');
+            api('settings/webhooks/' + hook.id + '/test', { method: 'POST' }).then(function (s) {
+                toast(s.ok ? 'Test delivered (HTTP ' + s.httpStatus + ')' : 'Test failed: ' + (s.error || 'HTTP ' + s.httpStatus), s.ok ? undefined : 'error');
+                openWebhooks();
+            });
+        });
+    }
+
+    // ---------- SMTP error simulation ----------
+    function ruleRow(r) {
+        return '<div class="editor-row rule-row">' +
+            '<label class="switch" title="Enabled"><input type="checkbox" class="r-enabled"' + (r.enabled !== false ? ' checked' : '') + ' /></label>' +
+            '<select class="form-control r-match"><option value="rcpt"' + (r.match !== 'from' ? ' selected' : '') + '>RCPT TO</option><option value="from"' + (r.match === 'from' ? ' selected' : '') + '>MAIL FROM</option></select>' +
+            '<input class="form-control r-pattern mono" placeholder="*@reject.test" value="' + esc(r.pattern || '') + '" />' +
+            '<input class="form-control r-code mono" type="number" min="200" max="599" value="' + (r.code || 550) + '" title="SMTP reply code" />' +
+            '<input class="form-control r-enhanced mono" placeholder="5.1.1" value="' + esc(r.enhancedCode || '') + '" title="Enhanced status code" />' +
+            '<input class="form-control r-message" placeholder="Message" value="' + esc(r.message || '') + '" />' +
+            '<input class="form-control r-delay mono" type="number" min="0" max="120000" step="500" value="' + (r.delayMs || 0) + '" title="Delay before replying (ms)" />' +
+            '<button type="button" class="icon-btn icon-btn-sm danger" data-action="remove-row" title="Remove"><i class="i i-trash"></i></button></div>';
+    }
+
+    function openRules(rules) {
+        (rules ? Promise.resolve(rules) : api('settings/smtp-rules')).then(function (list) {
+            openModal('SMTP error simulation', 'i-alert',
+                '<p style="margin-top:0">Make the server <strong>reject or delay</strong> specific addresses so you can test how your app handles bounces, full mailboxes, temporary failures and slow servers. The first matching rule wins; <span class="mono">*</span> and <span class="mono">?</span> are wildcards. A 2xx code accepts after the delay.</p>' +
+                '<div class="editor-head rule-row"><span></span><span>Stage</span><span>Address pattern</span><span>Code</span><span>Enhanced</span><span>Message</span><span>Delay ms</span><span></span></div>' +
+                '<div id="rule-rows" class="editor-rows">' + list.map(ruleRow).join('') + '</div>' +
+                '<div style="display:flex;gap:.5rem;margin-top:.6rem"><button type="button" class="btn btn-sm" data-action="add-rule"><i class="i i-plus"></i> Add rule</button>' +
+                '<button type="button" class="btn btn-sm btn-ghost" data-action="reset-rules">Restore defaults</button></div>' +
+                '<div class="form-text" style="margin-top:.8rem">Built-in test addresses use the reserved <span class="mono">.test</span> domain, so they can never be real: ' +
+                '<span class="mono">x@reject.test</span> (550), <span class="mono">x@full.test</span> (452), <span class="mono">x@tempfail.test</span> (451), <span class="mono">x@slow.test</span> (10 s delay).</div>',
+                '<button type="button" class="btn" data-close>Cancel</button><button type="button" class="btn btn-primary" data-action="save-rules"><i class="i i-check"></i> Save</button>');
+            var modal = document.querySelector('.sm-modal');
+            if (modal) modal.classList.add('sm-modal-wide');
+        }).catch(function (e) { toast('Could not load rules: ' + e.message, 'error'); });
+    }
+
+    function saveRules() {
+        var rules = [].map.call(document.querySelectorAll('#rule-rows .rule-row'), function (row) {
+            return {
+                enabled: row.querySelector('.r-enabled').checked,
+                match: row.querySelector('.r-match').value,
+                pattern: row.querySelector('.r-pattern').value.trim(),
+                code: parseInt(row.querySelector('.r-code').value, 10) || 550,
+                enhancedCode: row.querySelector('.r-enhanced').value.trim(),
+                message: row.querySelector('.r-message').value.trim(),
+                delayMs: parseInt(row.querySelector('.r-delay').value, 10) || 0,
+            };
+        }).filter(function (r) { return r.pattern; });
+        api('settings/smtp-rules', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rules) })
+            .then(function () { closeModal(); toast('Error simulation rules saved'); })
+            .catch(function (e) { toast('Save failed: ' + e.message, 'error'); });
+    }
+
+    function rejectedToast(r) {
+        var el = document.createElement('div');
+        el.className = 'sm-toast warning';
+        el.innerHTML = '<i class="i i-alert"></i><div class="toast-body"><div class="toast-title">Simulated ' + esc(String(r.code)) + ' · ' + (r.stage === 'from' ? 'MAIL FROM' : 'RCPT TO') + '</div>' +
+            '<div class="toast-line"><strong>' + esc(r.address) + '</strong></div><div class="toast-line sub">' + esc(r.enhancedCode + ' ' + r.message) + '</div></div>';
+        showToast(el, 6000);
     }
 
     // TLS details for the connect page: ports, certificate fingerprint, and download links.
@@ -1089,6 +1214,15 @@
             case 'purge-now': purgeNow(); break;
             case 'status-refresh': loadStatus(); break;
             case 'check-links': checkLinks(); break;
+            case 'webhooks': $('nav-toggle').checked = false; openWebhooks(); break;
+            case 'add-webhook': addWebhookRow(); break;
+            case 'save-webhooks': saveWebhooks(); break;
+            case 'test-webhook': testWebhook(actionEl.closest('.hook-row')); break;
+            case 'smtp-rules': $('nav-toggle').checked = false; openRules(); break;
+            case 'add-rule': $('rule-rows').insertAdjacentHTML('beforeend', ruleRow({})); break;
+            case 'reset-rules': api('settings/smtp-rules/defaults').then(openRules); break;
+            case 'save-rules': saveRules(); break;
+            case 'remove-row': actionEl.closest('.editor-row').remove(); break;
         }
     });
 

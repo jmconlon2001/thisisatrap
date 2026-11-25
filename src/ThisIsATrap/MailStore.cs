@@ -379,6 +379,28 @@ public sealed class MailStore
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>A JSON value from the settings table, or null when unset or unreadable.</summary>
+    public T? GetSetting<T>(string key) where T : class
+    {
+        using var db = Open();
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = "SELECT value FROM settings WHERE key = $k";
+        cmd.Parameters.AddWithValue("$k", key);
+        if (cmd.ExecuteScalar() is not string json) return null;
+        try { return JsonSerializer.Deserialize<T>(json, Json); }
+        catch (JsonException ex) { _log.LogWarning(ex, "Ignoring unreadable setting {Key}", key); return null; }
+    }
+
+    public void SaveSetting<T>(string key, T value)
+    {
+        using var db = Open();
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = "INSERT INTO settings (key, value) VALUES ($k, $v) ON CONFLICT(key) DO UPDATE SET value = excluded.value";
+        cmd.Parameters.AddWithValue("$k", key);
+        cmd.Parameters.AddWithValue("$v", JsonSerializer.Serialize(value, Json));
+        cmd.ExecuteNonQuery();
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static PurgeSettings? ParsePurge(string? json)

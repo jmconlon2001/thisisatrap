@@ -14,6 +14,14 @@ builder.Services.Configure<TrapOptions>(builder.Configuration.GetSection(TrapOpt
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<MailStore>();
 builder.Services.AddSingleton<SmtpTls>();
+builder.Services.AddSingleton<SmtpRules>();
+builder.Services.Configure<WebhookOptions>(builder.Configuration.GetSection($"{TrapOptions.Section}:Webhooks"));
+builder.Services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<WebhookOptions>>().Value);
+// Webhook receivers are usually internal, so private networks are allowed; cloud metadata addresses never are.
+builder.Services.AddHttpClient(WebhookService.HttpClientName, c => c.Timeout = Timeout.InfiniteTimeSpan)
+    .ConfigurePrimaryHttpMessageHandler(() => ThisIsATrap.Analysis.OutboundPolicy.CreateHandler(allowPrivate: true));
+builder.Services.AddSingleton<WebhookService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<WebhookService>());
 builder.Services.AddSingleton<EventHub>();
 builder.Services.AddSingleton<PurgeService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<PurgeService>());

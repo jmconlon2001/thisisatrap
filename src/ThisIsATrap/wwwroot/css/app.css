@@ -478,6 +478,27 @@ button { font: inherit; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 
+/* ---------- Row editors (webhooks, error simulation) ---------- */
+.sm-modal.sm-modal-wide { max-width: 1060px; }
+.editor-rows { display: flex; flex-direction: column; gap: .5rem; }
+.editor-row { display: grid; gap: .45rem; align-items: center; }
+.editor-row .switch { margin: 0; }
+.editor-row .form-control { min-width: 0; font-size: .82rem; padding: .4rem .55rem; }
+.hook-row { grid-template-columns: auto minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1.1fr) auto auto; }
+.hook-status { grid-column: 2 / -1; font-size: .74rem; font-weight: 600; margin-top: -.15rem; }
+.hook-status.ok { color: var(--sm-success); }
+.hook-status.bad { color: var(--sm-danger); }
+.rule-row { grid-template-columns: auto 7.2rem minmax(0, 1.4fr) 4.6rem 4.6rem minmax(0, 2fr) 5.6rem auto; }
+.editor-head { display: grid; gap: .45rem; padding: 0 .1rem; font-size: .68rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--sm-muted); margin-bottom: .3rem; }
+.editor-head span:first-child { width: 2.4em; }
+.sm-toast.warning > .i { color: #fbbf24; }
+@media (max-width: 767.98px) {
+    /* Stack each editor row into one column; rows are separated by a rule. */
+    .hook-row, .rule-row { grid-template-columns: minmax(0, 1fr); padding-bottom: .6rem; border-bottom: 1px solid var(--sm-border); }
+    .hook-status { grid-column: 1; }
+    .editor-head { display: none; }
+}
+
 /* ---------- Inboxes ---------- */
 .nav-section-row { display: flex; align-items: center; justify-content: space-between; }
 .nav-add { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; border: 1px solid rgba(255, 255, 255, .12); background: rgba(255, 255, 255, .04); color: var(--sm-sidebar-text); cursor: pointer; padding: 0; }
@@ -580,6 +601,7 @@ button { font: inherit; }
 .i-monitor{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Crect x=%222%22 y=%223%22 width=%2220%22 height=%2214%22 rx=%222%22/%3E%3Cpath d=%22M8 21h8M12 17v4%22/%3E%3C/svg%3E")}
 .i-tablet{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Crect x=%224%22 y=%222%22 width=%2216%22 height=%2220%22 rx=%222%22/%3E%3Cpath d=%22M12 18h.01%22/%3E%3C/svg%3E")}
 .i-phone{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Crect x=%226%22 y=%222%22 width=%2212%22 height=%2220%22 rx=%222%22/%3E%3Cpath d=%22M12 18h.01%22/%3E%3C/svg%3E")}
+.i-webhook{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2%22/%3E%3Cpath d=%22m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06%22/%3E%3Cpath d=%22m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8%22/%3E%3C/svg%3E")}
 .i-plus{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222.4%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M12 5v14M5 12h14%22/%3E%3C/svg%3E")}
 .i-menu{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M3 12h18M3 6h18M3 18h18%22/%3E%3C/svg%3E")}
 .i-gauge{--i:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M12 14l4-4%22/%3E%3Cpath d=%22M3.34 19a10 10 0 1 1 17.32 0%22/%3E%3C/svg%3E")}

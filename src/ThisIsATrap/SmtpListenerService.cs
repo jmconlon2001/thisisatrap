@@ -21,6 +21,9 @@ public sealed class SmtpListenerService(
     EventHub events,
     Health.RuntimeStats stats,
     SmtpTls tls,
+    SmtpRules rules,
+    WebhookService webhooks,
+    TimeProvider time,
     ILogger<SmtpListenerService> log) : BackgroundService
 {
     private const SslProtocols Protocols = SslProtocols.Tls12 | SslProtocols.Tls13;
@@ -59,8 +62,9 @@ public sealed class SmtpListenerService(
     {
         var o = options.Value;
         var services = new SmtpServer.ComponentModel.ServiceProvider();
-        services.Add(new TrapMessageStore(store, events, stats, o.AutoCreateInboxes, log));
+        services.Add(new TrapMessageStore(store, events, stats, webhooks, o.AutoCreateInboxes, log));
         services.Add(new AcceptAnyUser());
+        services.Add(new SmtpRuleFilter(rules, events, stats, time, log));
 
         // IIS can briefly run the old and new worker side by side during a recycle, so the port
         // may still be held for a moment. Keep retrying instead of giving up.
@@ -96,7 +100,7 @@ public sealed class SmtpListenerService(
             => Task.FromResult(true);
     }
 
-    private sealed class TrapMessageStore(MailStore store, EventHub events, Health.RuntimeStats stats, bool autoCreateInboxes, ILogger log) : MessageStore
+    private sealed class TrapMessageStore(MailStore store, EventHub events, Health.RuntimeStats stats, WebhookService webhooks, bool autoCreateInboxes, ILogger log) : MessageStore
     {
         public override async Task<SmtpResponse> SaveAsync(ISessionContext context, IMessageTransaction transaction, ReadOnlySequence<byte> buffer, CancellationToken cancellationToken)
         {
@@ -147,8 +151,10 @@ public sealed class SmtpListenerService(
                 stats.MessageReceived();
                 log.LogInformation("Trapped message {Id} in {Inbox} from {From} to {To}: {Subject}", record.Id, inbox.Slug, record.From, record.To, record.Subject);
 
-                events.Publish("message", new MessageSummary(record.Id, record.ReceivedUtc, record.From, record.To, record.Subject,
-                    record.Preview, record.Size, record.AttachmentCount, false, inbox.Slug));
+                var summary = new MessageSummary(record.Id, record.ReceivedUtc, record.From, record.To, record.Subject,
+                    record.Preview, record.Size, record.AttachmentCount, false, inbox.Slug);
+                events.Publish("message", summary);
+                webhooks.Notify(summary, inbox);
                 return SmtpResponse.Ok;
             }
             catch (Exception ex)

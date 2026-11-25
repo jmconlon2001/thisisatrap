@@ -41,6 +41,8 @@ ThisIsATrap is a **real SMTP server that never delivers anything**. Point your a
 - [Spam score](#spam-score)
 - [Link & image checker](#link--image-checker)
 - [TLS (STARTTLS / SMTPS)](#tls-starttls--smtps)
+- [Webhooks](#webhooks)
+- [Error simulation](#error-simulation)
 - [Inboxes](#inboxes)
 - [Auto-purge](#auto-purge)
 - [Status & health](#status--health)
@@ -227,6 +229,46 @@ TLS is **off by default**, deliberately. If the server advertises STARTTLS, clie
 
 Deploying to IIS: `.\deploy\Deploy-ThisIsATrap.ps1 -StartTls -SmtpsPort 465` (optionally add `-CertificatePath`/`-CertificatePassword`), which also opens the firewall for the SMTPS port. With Docker, see the commented TLS lines in `docker-compose.yml`. To test it: `.\tools\Send-TestMail.ps1 -StartTls`.
 
+## Webhooks
+
+**Webhooks** in the sidebar POSTs a JSON notification to your own URLs whenever mail arrives. For example, an integration test can wait for an email without polling. Each webhook can be limited to one inbox and can have a signing secret.
+
+```http
+POST https://ci.internal/hooks/mail
+Content-Type: application/json
+X-Trap-Event: message.received
+X-Trap-Signature: sha256=<hex HMAC-SHA256 of the raw body, keyed with your secret>
+
+{ "event": "message.received", "sentUtc": "…",
+  "inbox": { "slug": "billing-api", "name": "Billing API" },
+  "message": { "id": "…", "from": "…", "to": "…", "subject": "…", "preview": "…", "attachmentCount": 0, "inbox": "billing-api" },
+  "urls": { "ui": "…/#<id>", "api": "…/api/messages/<id>", "raw": "…/api/messages/<id>/raw" } }
+```
+
+- **Retries:** failed deliveries are retried after 1 s and 5 s. 4xx responses other than 408/429 aren't retried. The last result is shown next to each webhook, and **Test** sends a sample notification right away.
+- **Secrets** are write-only: the API and UI only show whether one is set.
+- **Absolute URLs:** set `Webhooks:PublicUrl` (e.g. `http://trap:8025/`) so the payload's links are absolute.
+- **Where webhooks can go:** they make outbound HTTP calls only, never mail. Receivers on private networks are allowed, since internal CI is the usual target; cloud metadata addresses are not.
+
+## Error simulation
+
+**Error simulation** makes the SMTP server reject or delay chosen addresses, so you can test how your app handles bounces and failures. These rules ship enabled and use reserved `.test` domains, so they never match real mail:
+
+| Send to | Response |
+| --- | --- |
+| `anything@reject.test` | `550 5.1.1` user unknown |
+| `anything@full.test` | `452 4.2.2` mailbox full |
+| `anything@tempfail.test` | `451 4.3.0` temporary failure |
+| `anything@slow.test` | accepted after a 10 second delay |
+
+You can add your own rules for `RCPT TO` or `MAIL FROM`. Each rule has:
+- a glob pattern (`*`, `?`)
+- a reply code and an enhanced status code
+- a message
+- an optional delay; a 2xx code means accept after the delay
+
+The first matching rule wins. Each rejection pops up a warning toast and is counted on the status page. Rules are checked with a linear-time regex engine, so no pattern can stall the server.
+
 ## Inboxes
 
 Give each app, team or environment its own inbox. The **SMTP username** decides where a message lands:
@@ -304,6 +346,7 @@ Static settings live in `appsettings.json` under `ThisIsATrap`. The deploy scrip
 | `LinkCheck:AllowPrivateNetworks` | `false`. Set `true` to let the link checker fetch localhost/private-network URLs |
 | `Tls:StartTls` / `Tls:SmtpsPort` | Offer STARTTLS / listen with implicit TLS (both off by default). See [TLS](#tls-starttls--smtps) |
 | `Tls:CertificatePath` / `Tls:CertificatePassword` | PFX to use instead of the generated self-signed certificate |
+| `Webhooks:PublicUrl` | Base URL used for absolute links in webhook payloads |
 | `AutoCreateInboxes` | `true`: an unknown SMTP username creates an inbox. `false`: such mail goes to Default |
 | `PublicSmtpPort` | Optional. The port shown in the UI when clients reach SMTP on a different port than it listens on, for example behind a Docker port mapping |
 | `ServerName` | Name announced in the SMTP greeting |
@@ -367,6 +410,9 @@ Everything the UI does is available over plain HTTP, which is handy for automate
 | `PUT` | `/api/settings/purge` | Update purge rules |
 | `POST` | `/api/purge` | Run purge now |
 | `GET` | `/api/events` | Server-Sent Events stream |
+| `GET` / `PUT` | `/api/settings/webhooks` | List / replace webhooks (`secret`: omit = keep, `""` = remove) |
+| `POST` | `/api/settings/webhooks/{id}/test` | Send a sample notification now |
+| `GET` / `PUT` | `/api/settings/smtp-rules` | Error-simulation rules (`/defaults` for the built-ins) |
 | `GET` | `/api/tls/certificate[?format=pem]` | Public SMTP TLS certificate (404 when TLS is off) |
 | `GET` | `/api/status` | Everything on the status page: health, SMTP counters, storage, disk, purge, version, uptime |
 | `GET` | `/healthz` | Liveness: `200 Healthy` while the process serves HTTP |

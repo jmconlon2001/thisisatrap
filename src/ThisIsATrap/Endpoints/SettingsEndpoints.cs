@@ -40,6 +40,27 @@ public static class SettingsEndpoints
 
         api.MapPost("/purge", (PurgeService purge) => Results.Ok(new { removed = purge.RunOnce() }));
 
+        // ---- webhooks (secrets are write-only: responses only say whether one is set)
+        api.MapGet("/settings/webhooks", (WebhookService hooks) => Results.Ok(hooks.Views()));
+
+        api.MapPut("/settings/webhooks", (List<WebhookInput> body, WebhookService hooks) =>
+        {
+            if (body.Count > WebhookService.MaxWebhooks) return Results.BadRequest(new { error = $"At most {WebhookService.MaxWebhooks} webhooks." });
+            try { return Results.Ok(hooks.Save(body)); }
+            catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+        });
+
+        api.MapPost("/settings/webhooks/{id}/test", async (string id, WebhookService hooks, CancellationToken ct) =>
+            await hooks.TestAsync(id, ct) is { } status ? Results.Ok(status) : Results.NotFound());
+
+        // ---- SMTP error simulation
+        api.MapGet("/settings/smtp-rules", (SmtpRules rules) => Results.Ok(rules.Get()));
+        api.MapGet("/settings/smtp-rules/defaults", () => Results.Ok(SmtpRules.Defaults));
+        api.MapPut("/settings/smtp-rules", (List<SmtpRule> body, SmtpRules rules) =>
+            body.Count > SmtpRules.MaxRules
+                ? Results.BadRequest(new { error = $"At most {SmtpRules.MaxRules} rules." })
+                : Results.Ok(rules.Save(body)));
+
         // Public part of the SMTP TLS certificate, so clients can trust a self-signed one. Never the private key.
         api.MapGet("/tls/certificate", (SmtpTls tls, string? format) =>
         {
