@@ -171,6 +171,10 @@ if (-not (Get-Website -Name $SiteName)) {
     Set-ItemProperty "IIS:\Sites\$SiteName" -Name bindings -Value @{ protocol = 'http'; bindingInformation = "*:${HttpPort}:$HostName" }
 }
 Set-ItemProperty "IIS:\Sites\$SiteName" -Name applicationDefaults.preloadEnabled -Value $true  # Warm up on start (Application Initialization)
+# Application Initialization requests the liveness endpoint when the pool starts, so the app (and SMTP) come up before any user visits.
+$initFilter = 'system.webServer/applicationInitialization'
+Clear-WebConfiguration -PSPath "IIS:\Sites\$SiteName" -Filter "$initFilter/add" -ErrorAction SilentlyContinue
+Add-WebConfigurationProperty -PSPath "IIS:\Sites\$SiteName" -Filter $initFilter -Name '.' -Value @{ initializationPage = '/healthz' }
 
 # ---------------------------------------------------------------------------
 if (-not $SkipFirewall) {
@@ -188,20 +192,28 @@ if ((Get-WebsiteState -Name $SiteName).Value -ne 'Started') { Start-Website -Nam
 $url = "http://$(if ($HostName) { $HostName } else { 'localhost' }):$HttpPort/"
 
 $ok = $false
+$ready = $null
 for ($i = 0; $i -lt 30 -and -not $ok; $i++) {
     try {
-        $s = Invoke-RestMethod "${url}api/settings" -TimeoutSec 5
-        if ($s.smtp.status -like 'listening*') { $ok = $true } else { Start-Sleep 1 }
-    } catch { Start-Sleep 1 }
+        # /readyz returns 200 once SMTP is listening, the database answers and the data folder is writable (503 otherwise).
+        $ready = Invoke-RestMethod "${url}readyz" -TimeoutSec 5
+        $ok = $true
+    } catch {
+        if ($_.ErrorDetails.Message) { try { $ready = $_.ErrorDetails.Message | ConvertFrom-Json } catch { } }
+        Start-Sleep 1
+    }
 }
 
 Write-Host ''
 if ($ok) {
     Write-Host "ThisIsATrap is running." -ForegroundColor Green
     Write-Host "  Web UI : $url"
+    Write-Host "  Status : ${url}#status   (probes: ${url}healthz, ${url}readyz, ${url}api/status)"
+    if ($ready.status -eq 'Degraded') { Write-Warning "Ready but degraded: $(($ready.checks | Where-Object status -ne 'Healthy' | ForEach-Object { "$($_.name): $($_.description)" }) -join '; ')" }
     Write-Host "  SMTP   : $($env:COMPUTERNAME):$SmtpPort  (no auth / no TLS; any credentials accepted)"
     Write-Host "  Data   : $DataPath"
     Write-Host "  Test   : & '$repoRoot\tools\Send-TestMail.ps1' -Port $SmtpPort -Count 3"
 } else {
-    Write-Warning "The site started but the SMTP listener did not report 'listening' yet. Check $url and the Windows Event Log (Application, source 'IIS AspNetCore Module V2')."
+    $failing = if ($ready.checks) { ($ready.checks | Where-Object status -eq 'Unhealthy' | ForEach-Object { "$($_.name): $($_.description)" }) -join '; ' } else { 'no response' }
+    Write-Warning "The site started but is not ready ($failing). Check ${url}#status and the Windows Event Log (Application, source 'IIS AspNetCore Module V2')."
 }

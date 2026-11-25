@@ -373,6 +373,55 @@ button { font: inherit; }
 .toast-close { background: none; border: 0; color: #5d6a85; cursor: pointer; padding: 0; line-height: 1; }
 .toast-close:hover { color: #fff; }
 
+/* ---------- Status & health view ---------- */
+.dot-warn { background: var(--sm-warning); }
+.nav-health { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: transparent; }
+.nav-health.ok { background: var(--sm-success); }
+.nav-health.warn { background: var(--sm-warning); }
+.nav-health.bad { background: var(--sm-danger); box-shadow: 0 0 0 3px rgba(239, 68, 68, .25); }
+
+.status-view { flex: 1; min-height: 0; overflow-y: auto; padding: 1rem 1.25rem 2rem; }
+.status-wrap { max-width: 1280px; margin: 0 auto; }
+.status-title { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.status-title h2 { margin: 0; font-size: 1.25rem; font-weight: 750; letter-spacing: -.01em; }
+.status-title .meta { color: var(--sm-muted); font-size: .8rem; margin-right: auto; }
+
+.status-banner { display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; padding: 1rem 1.2rem; border-radius: var(--sm-radius); border: 1px solid var(--sm-border); background: var(--sm-surface); box-shadow: var(--sm-shadow); margin-bottom: 1rem; }
+.status-banner > .i { width: 1.7rem; height: 1.7rem; flex: none; }
+.status-banner > div { display: flex; flex-direction: column; min-width: 0; }
+.status-banner strong { font-size: 1.05rem; }
+.status-banner span { color: var(--sm-muted); font-size: .82rem; }
+.status-banner.ok { border-left: 4px solid var(--sm-success); }
+.status-banner.warn { border-left: 4px solid var(--sm-warning); }
+.status-banner.bad { border-left: 4px solid var(--sm-danger); }
+.status-banner.ok > .i { color: var(--sm-success); }
+.status-banner.warn > .i { color: var(--sm-warning); }
+.status-banner.bad > .i { color: var(--sm-danger); }
+.status-links { margin-left: auto; display: flex; gap: .4rem; flex-wrap: wrap; flex-direction: row !important; }
+.status-links a { text-decoration: none; }
+.status-links a:hover { color: var(--sm-accent); border-color: var(--sm-accent); }
+
+.status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 1rem; align-items: start; }
+.status-card { background: var(--sm-surface); border: 1px solid var(--sm-border); border-radius: var(--sm-radius); box-shadow: var(--sm-shadow); padding: 1rem 1.1rem; min-width: 0; }
+.status-card-head { display: flex; align-items: center; gap: .5rem; font-weight: 700; margin-bottom: .8rem; }
+.status-card-head .i { color: var(--sm-accent); }
+.status-card-action { margin-left: auto; }
+.status-kv { margin-top: .8rem; }
+.status-kv dd .dot { margin-right: .3rem; vertical-align: middle; }
+
+.checks { display: flex; flex-direction: column; gap: .5rem; }
+.check-row { display: flex; align-items: center; gap: .7rem; padding: .6rem .7rem; border: 1px solid var(--sm-border); border-radius: var(--sm-radius-sm); background: var(--sm-surface-2); }
+.check-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.check-main strong { font-size: .9rem; }
+.check-main span { color: var(--sm-muted); font-size: .78rem; overflow-wrap: anywhere; }
+.check-ms { color: var(--sm-muted); font-family: var(--sm-mono); font-size: .72rem; white-space: nowrap; }
+
+.meter-label { display: flex; justify-content: space-between; gap: .5rem; margin-top: .9rem; font-size: .78rem; color: var(--sm-muted); font-weight: 600; }
+.meter { height: 8px; border-radius: 999px; background: var(--sm-surface-2); border: 1px solid var(--sm-border); overflow: hidden; margin-top: .35rem; }
+.meter span { display: block; height: 100%; background: var(--sm-gradient); border-radius: inherit; }
+.meter span.warn { background: var(--sm-warning); }
+.meter span.bad { background: var(--sm-danger); }
+
 /* ---------- Responsive ---------- */
 .mobile-only { display: none !important; }
 @media (max-width: 1199.98px) {
@@ -403,6 +452,9 @@ button { font: inherit; }
     .sm-modal { border-radius: 18px 18px 0 0; max-height: 92vh; }
     .sm-modal-backdrop { place-items: end center; padding: 0; }
     .toast-stack { left: 1rem; right: 1rem; width: auto; }
+    .status-view { padding: .75rem .75rem 1.5rem; }
+    .status-links { margin-left: 0; }
+    .check-ms { display: none; }
 }
 
 /* ---------- Icon set ---------- */

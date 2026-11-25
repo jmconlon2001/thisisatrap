@@ -26,4 +26,9 @@ VOLUME /data
 
 COPY --from=build /app .
 USER $APP_UID
+
+# The runtime image has no curl/wget, so the app probes its own /readyz endpoint.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD ["dotnet", "ThisIsATrap.dll", "--health-check"]
+
 ENTRYPOINT ["dotnet", "ThisIsATrap.dll"]

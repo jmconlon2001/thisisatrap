@@ -27,6 +27,7 @@
                 <button type="button" class="nav-item-link" data-folder="attachments"><i class="i i-paperclip"></i> With attachments</button>
 
                 <div class="nav-section">System</div>
+                <button type="button" class="nav-item-link" data-view="status"><i class="i i-activity"></i> Status &amp; health <span class="nav-health" id="nav-health"></span></button>
                 <button type="button" class="nav-item-link" data-action="settings"><i class="i i-settings"></i> Settings &amp; auto-purge</button>
                 <button type="button" class="nav-item-link" data-action="connect"><i class="i i-info"></i> How to connect</button>
             </nav>
@@ -71,6 +72,8 @@
                     <div class="reader" id="reader"></div>
                 </section>
             </div>
+
+            <section class="status-view" id="status-view" aria-label="Status and health" hidden></section>
         </div>
     </div>
 

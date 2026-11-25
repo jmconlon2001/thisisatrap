@@ -70,14 +70,23 @@ jobs:
       - name: Build image
         run: docker build -t thisisatrap:ci .
       - name: Run container
-        run: docker run -d --name trap -p 8025:8080 -p 2525:2525 thisisatrap:ci
-      - name: Wait for SMTP listener
+        run: docker run -d --name trap --health-interval=3s --health-start-period=5s -p 8025:8080 -p 2525:2525 thisisatrap:ci
+      - name: Wait for readiness (/readyz)
         run: |
           for i in $(seq 1 60); do
-            if curl -fs http://localhost:8025/api/settings | grep -q '"status":"listening'; then exit 0; fi
+            if curl -fs http://localhost:8025/readyz; then echo; exit 0; fi
             sleep 1
           done
           docker logs trap; exit 1
+      - name: Docker HEALTHCHECK reports healthy
+        run: |
+          for i in $(seq 1 30); do
+            state=$(docker inspect --format '{{.State.Health.Status}}' trap)
+            echo "health: $state"
+            if [ "$state" = "healthy" ]; then exit 0; fi
+            sleep 3
+          done
+          docker inspect --format '{{json .State.Health}}' trap; exit 1
       - name: Send a message and find it
         run: |
           python3 - <<'EOF'

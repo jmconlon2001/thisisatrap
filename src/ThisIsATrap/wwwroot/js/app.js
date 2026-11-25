@@ -15,6 +15,7 @@
         rawCache: {},
         settings: null,
         live: false,
+        view: 'mail',
     };
 
     var $ = function (id) { return document.getElementById(id); };
@@ -46,7 +47,8 @@
     function fmtSize(b) {
         if (b < 1024) return b + ' B';
         if (b < 1024 * 1024) return (b / 1024).toFixed(b < 10240 ? 1 : 0) + ' KB';
-        return (b / 1024 / 1024).toFixed(1) + ' MB';
+        if (b < 1024 * 1024 * 1024) return (b / 1024 / 1024).toFixed(1) + ' MB';
+        return (b / 1024 / 1024 / 1024).toFixed(1) + ' GB';
     }
     function fmtShort(iso) {
         var d = new Date(iso), now = new Date();
@@ -498,9 +500,135 @@
         });
     }
 
+    // ---------- status & health view ----------
+    var statusTimer = null;
+    var healthClass = { Healthy: 'ok', Degraded: 'warn', Unhealthy: 'bad' };
+    var checkNames = { smtp: 'SMTP listener', database: 'Database', storage: 'Storage' };
+    function fmtVersion(v) {
+        var m = /^([^+]+)\+([0-9a-f]{7})/.exec(v || '');
+        return m ? esc(m[1]) + ' <span class="pill pill-muted" title="' + esc(v) + '">' + m[2] + '</span>' : esc(v);
+    }
+
+    function fmtDuration(sec) {
+        var d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60);
+        return d ? d + 'd ' + h + 'h' : h ? h + 'h ' + m + 'm' : m ? m + 'm ' + (sec % 60) + 's' : sec + 's';
+    }
+    function kvRows(rows) {
+        return '<dl class="kv status-kv">' + rows.filter(Boolean).map(function (r) {
+            return '<dt>' + r[0] + '</dt><dd' + (r[2] ? ' class="mono"' : '') + '>' + r[1] + '</dd>';
+        }).join('') + '</dl>';
+    }
+    function card(icon, title, body, extra) {
+        return '<div class="status-card"><div class="status-card-head"><i class="i ' + icon + '"></i> ' + title + (extra || '') + '</div>' + body + '</div>';
+    }
+
+    function setHealthBadge(status) {
+        var el = $('nav-health');
+        el.className = 'nav-health ' + (healthClass[status] || '');
+        el.title = status || '';
+    }
+
+    function loadStatus() {
+        return api('status').then(function (s) {
+            setHealthBadge(s.health.status);
+            if (state.view === 'status') renderStatus(s);
+        }).catch(function (e) {
+            setHealthBadge('Unhealthy');
+            if (state.view === 'status')
+                $('status-view').innerHTML = '<div class="status-wrap"><div class="status-banner bad"><i class="i i-alert"></i><div><strong>Status unavailable</strong><span>' + esc(e.message) + '</span></div></div></div>';
+        });
+    }
+
+    function renderStatus(s) {
+        var h = s.health, cls = healthClass[h.status] || 'bad';
+        var checks = h.checks.map(function (c) {
+            return '<div class="check-row"><span class="dot ' + (c.status === 'Healthy' ? 'dot-live' : c.status === 'Degraded' ? 'dot-warn' : 'dot-danger') + '"></span>' +
+                '<div class="check-main"><strong>' + esc(checkNames[c.name] || c.name) + '</strong><span>' + esc(c.description || '') + (c.error ? ' · ' + esc(c.error) : '') + '</span></div>' +
+                '<span class="pill ' + (c.status === 'Healthy' ? 'pill-muted' : 'pill-accent') + '">' + esc(c.status) + '</span>' +
+                '<span class="check-ms">' + c.durationMs + ' ms</span></div>';
+        }).join('');
+
+        var st = s.storage, usedPct = st.diskTotalBytes ? Math.round((1 - st.diskFreeBytes / st.diskTotalBytes) * 100) : null;
+        var disk = usedPct == null ? '' :
+            '<div class="meter-label"><span>Disk</span><span>' + fmtSize(st.diskFreeBytes) + ' free of ' + fmtSize(st.diskTotalBytes) + '</span></div>' +
+            '<div class="meter"><span class="' + (usedPct > 95 ? 'bad' : usedPct > 85 ? 'warn' : '') + '" style="width:' + usedPct + '%"></span></div>';
+
+        var p = s.purge, smtp = s.smtp, app = s.app;
+        $('status-view').innerHTML =
+            '<div class="status-wrap">' +
+            '<div class="status-title"><h2>Status &amp; health</h2>' +
+            '<span class="meta">Updated ' + new Date().toLocaleTimeString() + ' · refreshes every 5 s</span>' +
+            '<button type="button" class="btn btn-sm" data-action="status-refresh"><i class="i i-refresh"></i> Refresh</button></div>' +
+            '<div class="status-banner ' + cls + '"><i class="i ' + (cls === 'ok' ? 'i-check' : 'i-alert') + '"></i><div><strong>' +
+            (cls === 'ok' ? 'All systems operational' : cls === 'warn' ? 'Running with warnings' : 'Not ready') + '</strong>' +
+            '<span>Overall ' + esc(h.status) + ' · ' + h.checks.length + ' checks in ' + h.totalDurationMs + ' ms</span></div>' +
+            '<div class="status-links"><a class="pill pill-muted mono" href="healthz" target="_blank" rel="noopener">/healthz</a>' +
+            '<a class="pill pill-muted mono" href="readyz" target="_blank" rel="noopener">/readyz</a>' +
+            '<a class="pill pill-muted mono" href="api/status" target="_blank" rel="noopener">/api/status</a></div></div>' +
+            '<div class="status-grid">' +
+            card('i-activity', 'Health checks', '<div class="checks">' + checks + '</div>') +
+            card('i-server', 'SMTP listener',
+                '<div class="stat-row"><div><strong>' + smtp.messagesReceived + '</strong><span title="Since the app started">Received</span></div>' +
+                '<div><strong>' + smtp.messagesRejected + '</strong><span>Rejected</span></div>' +
+                '<div><strong>' + esc(ago(smtp.lastMessageUtc)) + '</strong><span>Last message</span></div></div>' +
+                kvRows([
+                    ['Status', '<span class="dot ' + (smtp.listening ? 'dot-live' : 'dot-danger') + '"></span> ' + esc(smtp.status)],
+                    ['Address', esc(location.hostname + ':' + smtp.port), true],
+                    smtp.port !== smtp.listenPort ? ['Listening on', String(smtp.listenPort), true] : null,
+                    ['Greeting name', esc(smtp.serverName), true],
+                    ['Max message size', smtp.maxMessageSizeMb + ' MB'],
+                ])) +
+            card('i-database', 'Storage',
+                '<div class="stat-row"><div><strong>' + st.messages + '</strong><span>Messages</span></div>' +
+                '<div><strong>' + st.unread + '</strong><span>Unread</span></div>' +
+                '<div><strong>' + fmtSize(st.messageBytes) + '</strong><span>Mail size</span></div></div>' +
+                disk +
+                kvRows([['Data folder', esc(st.dataPath), true], ['Database', fmtSize(st.databaseBytes)]])) +
+            card('i-zap', 'Auto-purge',
+                kvRows([
+                    ['Automatic', p.enabled ? 'On, every ' + p.intervalMinutes + ' min' : 'Off'],
+                    ['Max age', p.maxAgeHours ? p.maxAgeHours + ' hours' : 'No limit'],
+                    ['Max messages', p.maxMessages || 'No limit'],
+                    ['Last run', esc(ago(p.lastRunUtc)) + (p.lastRunUtc ? ' · removed ' + p.lastRemoved : '')],
+                    ['Next run', p.nextRunUtc ? esc(new Date(p.nextRunUtc).toLocaleTimeString()) : '—'],
+                ]), '<button type="button" class="btn btn-sm btn-ghost status-card-action" data-action="settings">Edit</button>') +
+            card('i-layers', 'Application',
+                kvRows([
+                    ['Version', fmtVersion(app.version)],
+                    ['Uptime', fmtDuration(app.uptimeSeconds) + ' · since ' + esc(fmtLong(app.startedUtc))],
+                    ['Hosting', esc(app.hosting) + ' · ' + esc(app.environment)],
+                    ['Host', esc(app.host), true],
+                    ['OS', esc(app.os)],
+                    ['Runtime', esc(app.runtime)],
+                    ['Process', 'PID ' + app.processId + ' · ' + fmtSize(app.memoryBytes)],
+                    ['Browser tabs', String(s.events.connectedClients)],
+                ])) +
+            '</div></div>';
+    }
+
+    function showView(view) {
+        state.view = view;
+        var isStatus = view === 'status';
+        mailEl.hidden = isStatus;
+        $('status-view').hidden = !isStatus;
+        document.querySelectorAll('[data-view]').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-view') === view); });
+        if (isStatus) document.querySelectorAll('[data-folder]').forEach(function (b) { b.classList.remove('active'); });
+        $('nav-toggle').checked = false;
+        clearInterval(statusTimer);
+        if (isStatus) {
+            if (location.hash !== '#status') history.replaceState(null, '', '#status');
+            $('status-view').innerHTML = '<div class="status-wrap"><div class="empty"><p>Loading…</p></div></div>';
+            loadStatus();
+            statusTimer = setInterval(loadStatus, 5000);
+        } else if (location.hash === '#status') {
+            history.replaceState(null, '', location.pathname + location.search);
+        }
+    }
+
     // ---------- folders / search ----------
     var folderTitles = { all: 'Inbox', unread: 'Unread', attachments: 'With attachments' };
     function setFolder(f, silent) {
+        if (state.view !== 'mail') showView('mail');
         state.folder = f;
         document.querySelectorAll('[data-folder]').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-folder') === f); });
         $('folder-title').textContent = folderTitles[f];
@@ -534,6 +662,8 @@
         }
         var folder = t.closest('[data-folder]');
         if (folder) { setFolder(folder.getAttribute('data-folder')); return; }
+        var viewEl = t.closest('[data-view]');
+        if (viewEl) { showView(viewEl.getAttribute('data-view')); return; }
         if (t.closest('[data-close]') && (t.closest('button[data-close]') || t.classList.contains('sm-modal-backdrop'))) { closeModal(); return; }
 
         var actionEl = t.closest('[data-action]');
@@ -564,12 +694,13 @@
             case 'connect': $('nav-toggle').checked = false; openConnect(); break;
             case 'save-settings': save(); break;
             case 'purge-now': purgeNow(); break;
+            case 'status-refresh': loadStatus(); break;
         }
     });
 
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape' && $('modal-root').innerHTML) { closeModal(); return; }
-        if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || $('modal-root').innerHTML || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || $('modal-root').innerHTML || e.ctrlKey || e.metaKey || e.altKey || state.view !== 'mail') return;
         var idx = state.items.findIndex(function (m) { return m.id === state.selectedId; });
         if (e.key === 'j' || e.key === 'ArrowDown') { var n = state.items[idx + 1]; if (n) { select(n.id); e.preventDefault(); } }
         else if (e.key === 'k' || e.key === 'ArrowUp') { var p = state.items[idx - 1]; if (p) { select(p.id); e.preventDefault(); } }
@@ -588,5 +719,8 @@
         var id = location.hash.slice(1);
         if (/^[0-9a-f]{32}$/.test(id)) select(id);
     });
+    if (location.hash === '#status') showView('status'); else loadStatus();
+    // Keep the sidebar health dot current even when the status view is closed.
+    setInterval(function () { if (state.view !== 'status') loadStatus(); }, 30000);
     connectEvents();
 })();

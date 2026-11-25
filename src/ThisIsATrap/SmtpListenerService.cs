@@ -18,9 +18,9 @@ public sealed class SmtpListenerService(
     IOptions<TrapOptions> options,
     MailStore store,
     EventHub events,
+    Health.RuntimeStats stats,
     ILogger<SmtpListenerService> log) : BackgroundService
 {
-    public static string Status { get; private set; } = "starting";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -35,7 +35,7 @@ public sealed class SmtpListenerService(
             .Build();
 
         var services = new SmtpServer.ComponentModel.ServiceProvider();
-        services.Add(new TrapMessageStore(store, events, log));
+        services.Add(new TrapMessageStore(store, events, stats, log));
         services.Add(new AcceptAnyUser());
 
         // IIS can briefly run the old and new worker side by side during a recycle, so the port
@@ -47,7 +47,7 @@ public sealed class SmtpListenerService(
             try
             {
                 log.LogInformation("SMTP listener starting on port {Port}", o.SmtpPort);
-                Status = $"listening on port {o.SmtpPort}";
+                stats.SmtpStatus = $"listening on port {o.SmtpPort}";
                 await server.StartAsync(stoppingToken);
                 return;
             }
@@ -58,7 +58,7 @@ public sealed class SmtpListenerService(
             catch (Exception ex)
             {
                 attempt++;
-                Status = $"error: {ex.Message}";
+                stats.SmtpStatus = $"error: {ex.Message}";
                 log.LogError(ex, "SMTP listener failed on port {Port} (attempt {Attempt}); retrying", o.SmtpPort, attempt);
                 try { await Task.Delay(TimeSpan.FromSeconds(Math.Min(30, 2 * attempt)), stoppingToken); }
                 catch (OperationCanceledException) { return; }
@@ -72,7 +72,7 @@ public sealed class SmtpListenerService(
             => Task.FromResult(true);
     }
 
-    private sealed class TrapMessageStore(MailStore store, EventHub events, ILogger log) : MessageStore
+    private sealed class TrapMessageStore(MailStore store, EventHub events, Health.RuntimeStats stats, ILogger log) : MessageStore
     {
         public override async Task<SmtpResponse> SaveAsync(ISessionContext context, IMessageTransaction transaction, ReadOnlySequence<byte> buffer, CancellationToken cancellationToken)
         {
@@ -108,6 +108,7 @@ public sealed class SmtpListenerService(
                     clientIp);
 
                 await store.AddAsync(record, raw, cancellationToken);
+                stats.MessageReceived();
                 log.LogInformation("Trapped message {Id} from {From} to {To}: {Subject}", record.Id, record.From, record.To, record.Subject);
 
                 events.Publish("message", new MessageSummary(record.Id, record.ReceivedUtc, record.From, record.To, record.Subject,
@@ -117,6 +118,7 @@ public sealed class SmtpListenerService(
             catch (Exception ex)
             {
                 log.LogError(ex, "Failed to store incoming message");
+                stats.MessageRejected();
                 return new SmtpResponse(SmtpReplyCode.TransactionFailed, "Could not store message");
             }
         }

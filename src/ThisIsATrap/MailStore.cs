@@ -91,6 +91,12 @@ public sealed class MailStore
 
     public string DataPath { get; }
 
+    /// <summary>Size of the SQLite index including its WAL files.</summary>
+    public long DatabaseBytes() => new[] { "", "-wal", "-shm" }
+        .Select(s => new FileInfo(Path.Combine(DataPath, DatabaseFile + s)))
+        .Where(f => f.Exists)
+        .Sum(f => f.Length);
+
     /// <summary>Data folders created before the rename hold mailtrap.db (+ WAL files); adopt them under the new name.</summary>
     private void MigrateLegacyDatabase(string dbPath)
     {

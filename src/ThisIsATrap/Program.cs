@@ -1,6 +1,12 @@
 using ThisIsATrap;
+using ThisIsATrap.Endpoints;
+using ThisIsATrap.Health;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.StaticFiles;
+
+// Docker HEALTHCHECK: probe the running instance instead of starting a new one.
+if (HealthProbe.IsRequested(args))
+    return await HealthProbe.RunAsync(HealthProbe.ReadyUrl(Environment.GetEnvironmentVariable));
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,12 +19,18 @@ builder.Services.AddSingleton<EventHub>();
 builder.Services.AddSingleton<PurgeService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<PurgeService>());
 builder.Services.AddHostedService<SmtpListenerService>();
+builder.Services.AddTrapHealth();
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
 
 var app = builder.Build();
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    // Always revalidate (cheap 304 via ETag) so an upgrade never leaves browsers running stale JS/CSS.
+    OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache",
+});
+app.MapTrapHealth();
 
 var api = app.MapGroup("/api");
 
@@ -101,12 +113,12 @@ api.MapDelete("/messages", (MailStore store, EventHub events) =>
     return Results.Ok(new { removed });
 });
 
-api.MapGet("/settings", (MailStore store, Microsoft.Extensions.Options.IOptions<TrapOptions> options, EventHub events) => Results.Ok(new
+api.MapGet("/settings", (MailStore store, Microsoft.Extensions.Options.IOptions<TrapOptions> options, EventHub events, RuntimeStats stats) => Results.Ok(new
 {
     purge = store.GetPurgeSettings(),
     lastPurgeUtc = PurgeService.LastRunUtc,
     lastPurgeRemoved = PurgeService.LastRemoved,
-    smtp = new { port = options.Value.PublicSmtpPort ?? options.Value.SmtpPort, listenPort = options.Value.SmtpPort, host = options.Value.ServerName, status = SmtpListenerService.Status, maxMessageSizeMb = options.Value.MaxMessageSizeMb },
+    smtp = new { port = options.Value.PublicSmtpPort ?? options.Value.SmtpPort, listenPort = options.Value.SmtpPort, host = options.Value.ServerName, status = stats.SmtpStatus, maxMessageSizeMb = options.Value.MaxMessageSizeMb },
     dataPath = store.DataPath,
     stats = store.Stats(),
     connectedClients = events.ConnectedClients,
@@ -158,6 +170,7 @@ api.MapGet("/events", async (HttpContext http, EventHub hub, IHostApplicationLif
 });
 
 app.Run();
+return 0;
 
 static async Task<IResult> SendPartAsync(HttpContext http, MimeKit.MimeEntity part, string fileName, bool download, CancellationToken ct)
 {

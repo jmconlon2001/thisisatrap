@@ -38,6 +38,7 @@ ThisIsATrap is a **real SMTP server that never delivers anything**. Point your a
 - [Run with Docker](#run-with-docker)
 - [Connecting your apps](#connecting-your-apps)
 - [Auto-purge](#auto-purge)
+- [Status & health](#status--health)
 - [Configuration](#configuration)
 - [How it works](#how-it-works)
 - [HTTP API](#http-api)
@@ -162,6 +163,29 @@ Open **Settings & auto-purge** in the sidebar.
 
 Rules are stored in the database, so they survive restarts and redeploys. Changes take effect immediately. **Run purge now** applies the rules on demand, and the trash icon in the top bar deletes everything.
 
+## Status & health
+
+**Status & health** in the sidebar, or `/#status`, shows a live dashboard that refreshes every 5 seconds:
+- **Overall health** and each check: SMTP listener, database, and storage (writable, free disk space).
+- **SMTP:** messages received and rejected since start, and when the last message arrived.
+- **Storage:** message count and size, database size, and a disk usage bar.
+- **Auto-purge:** the current rules, and when the purge last ran and runs next.
+- **Application:** version, uptime, hosting (IIS, Docker or Kestrel), OS, runtime and memory.
+
+A dot next to the menu item turns amber when something is degraded and red when something is unhealthy.
+
+The same information is available to monitoring tools:
+
+| Endpoint | Use it for |
+| --- | --- |
+| `/healthz` | **Liveness** (is the process up?). It returns `200 Healthy` without touching any dependency. |
+| `/readyz` | **Readiness** (can it trap mail?). It returns a JSON report: `200` when Healthy or Degraded, `503` when SMTP isn't listening, the database fails, or the data folder isn't writable. Storage reports **Degraded** below 512 MB free. |
+| `/api/status` | Everything shown on the status page, as JSON. |
+
+Where they're used:
+- **Docker:** the image has a `HEALTHCHECK` that runs `dotnet ThisIsATrap.dll --health-check`, which probes `/readyz`. `docker ps` shows `healthy` or `unhealthy`.
+- **IIS:** Application Initialization warms the site up through `/healthz`. The deploy script waits for `/readyz` and prints any check that isn't healthy.
+
 ## Configuration
 
 Static settings live in `appsettings.json` under `ThisIsATrap`. The deploy script writes the server-specific values.
@@ -232,6 +256,9 @@ Everything the UI does is available over plain HTTP, which is handy for automate
 | `PUT` | `/api/settings/purge` | Update purge rules |
 | `POST` | `/api/purge` | Run purge now |
 | `GET` | `/api/events` | Server-Sent Events stream |
+| `GET` | `/api/status` | Everything on the status page: health, SMTP counters, storage, disk, purge, version, uptime |
+| `GET` | `/healthz` | Liveness: `200 Healthy` while the process serves HTTP |
+| `GET` | `/readyz` | Readiness: `200` when SMTP is listening, the database answers and the data folder is writable; `503` otherwise |
 
 ```powershell
 # e.g. assert an integration test sent a password-reset email

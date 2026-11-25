@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AspNetCoreHostingModel>InProcess</AspNetCoreHostingModel>
     <RootNamespace>ThisIsATrap</RootNamespace>
+    <Version>1.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
