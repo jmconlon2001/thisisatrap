@@ -31,6 +31,33 @@ public sealed class TrapOptions
 
     /// <summary>Where the SQLite index and raw .eml files are stored. Relative paths resolve against the app folder.</summary>
     public string DataPath { get; set; } = "App_Data";
+
+    /// <summary>Optional TLS for the SMTP listener. Off by default.</summary>
+    public SmtpTlsOptions Tls { get; set; } = new();
+}
+
+/// <summary>
+/// STARTTLS on the main port and/or implicit TLS ("SMTPS") on a second port.
+/// Off by default on purpose: advertising STARTTLS makes clients such as nodemailer upgrade
+/// automatically, and they then reject a self-signed certificate.
+/// </summary>
+public sealed class SmtpTlsOptions
+{
+    /// <summary>Advertise STARTTLS on <see cref="TrapOptions.SmtpPort"/>.</summary>
+    public bool StartTls { get; set; }
+
+    /// <summary>Also listen with implicit TLS on this port (465 is customary). Null = no SMTPS port.</summary>
+    public int? SmtpsPort { get; set; }
+
+    /// <summary>Port clients use for SMTPS when it differs from <see cref="SmtpsPort"/> (e.g. Docker mapping). UI only.</summary>
+    public int? PublicSmtpsPort { get; set; }
+
+    /// <summary>PFX/PKCS#12 certificate to use. Empty = generate a self-signed one in the data folder.</summary>
+    public string? CertificatePath { get; set; }
+
+    public string? CertificatePassword { get; set; }
+
+    public bool Enabled => StartTls || SmtpsPort is not null;
 }
 
 /// <summary>User-editable auto-purge rules.</summary>

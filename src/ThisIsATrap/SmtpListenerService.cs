@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Net;
+using System.Security.Authentication;
 using Microsoft.Extensions.Options;
 using MimeKit;
 using SmtpServer;
@@ -19,21 +20,44 @@ public sealed class SmtpListenerService(
     MailStore store,
     EventHub events,
     Health.RuntimeStats stats,
+    SmtpTls tls,
     ILogger<SmtpListenerService> log) : BackgroundService
 {
+    private const SslProtocols Protocols = SslProtocols.Tls12 | SslProtocols.Tls13;
+
+    /// <summary>Builds the server options: the main endpoint (with STARTTLS when enabled) plus an optional implicit-TLS endpoint.</summary>
+    private ISmtpServerOptions BuildOptions(TrapOptions o)
+    {
+        var cert = tls.Certificate; // null when TLS is off
+        var builder = new SmtpServerOptionsBuilder()
+            .ServerName(o.ServerName)
+            .MaxMessageSize(o.MaxMessageSizeMb * 1024 * 1024)
+            .Endpoint(b =>
+            {
+                b.Endpoint(new IPEndPoint(IPAddress.Any, o.SmtpPort))
+                    .AuthenticationRequired(false)
+                    .AllowUnsecureAuthentication(true);
+                if (o.Tls.StartTls && cert is not null) b.Certificate(cert).SupportedSslProtocols(Protocols);
+            });
+        if (o.Tls.SmtpsPort is { } smtps && cert is not null)
+        {
+            builder.Endpoint(b => b
+                .Endpoint(new IPEndPoint(IPAddress.Any, smtps))
+                .IsSecure(true)
+                .Certificate(cert)
+                .SupportedSslProtocols(Protocols)
+                .AuthenticationRequired(false)
+                .AllowUnsecureAuthentication(true));
+        }
+        return builder.Build();
+    }
+
+    public static string ListeningStatus(TrapOptions o) =>
+        $"listening on port {o.SmtpPort}" + (o.Tls.StartTls ? " (STARTTLS)" : "") + (o.Tls.SmtpsPort is { } p ? $", {p} (TLS)" : "");
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var o = options.Value;
-        var serverOptions = new SmtpServerOptionsBuilder()
-            .ServerName(o.ServerName)
-            .MaxMessageSize(o.MaxMessageSizeMb * 1024 * 1024)
-            .Endpoint(b => b
-                .Endpoint(new IPEndPoint(IPAddress.Any, o.SmtpPort))
-                .AuthenticationRequired(false)
-                .AllowUnsecureAuthentication(true))
-            .Build();
-
         var services = new SmtpServer.ComponentModel.ServiceProvider();
         services.Add(new TrapMessageStore(store, events, stats, o.AutoCreateInboxes, log));
         services.Add(new AcceptAnyUser());
@@ -43,11 +67,11 @@ public sealed class SmtpListenerService(
         var attempt = 0;
         while (!stoppingToken.IsCancellationRequested)
         {
-            var server = new SmtpServer.SmtpServer(serverOptions, services);
             try
             {
-                log.LogInformation("SMTP listener starting on port {Port}", o.SmtpPort);
-                stats.SmtpStatus = $"listening on port {o.SmtpPort}";
+                var server = new SmtpServer.SmtpServer(BuildOptions(o), services);
+                log.LogInformation("SMTP listener starting: {Status}", ListeningStatus(o));
+                stats.SmtpStatus = ListeningStatus(o);
                 await server.StartAsync(stoppingToken);
                 return;
             }

@@ -48,7 +48,7 @@ public static class HealthEndpoints
         });
 
         app.MapGet("/api/status", async (HealthCheckService health, MailStore store, RuntimeStats stats, EventHub events,
-            IOptions<TrapOptions> options, IWebHostEnvironment env, CancellationToken ct) =>
+            IOptions<TrapOptions> options, IWebHostEnvironment env, SmtpTls tls, CancellationToken ct) =>
         {
             var report = await health.CheckHealthAsync(c => c.Tags.Contains(ReadyTag), ct);
             var o = options.Value;
@@ -85,6 +85,7 @@ public static class HealthEndpoints
                     messagesReceived = stats.MessagesReceived,
                     messagesRejected = stats.MessagesRejected,
                     lastMessageUtc = stats.LastMessageUtc,
+                    tls = SettingsEndpoints.TlsDto(tls),
                 },
                 storage = new
                 {

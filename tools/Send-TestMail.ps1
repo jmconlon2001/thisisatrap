@@ -18,7 +18,9 @@ param(
     [string]$Bcc = 'audit@example.com',
     [string]$User,
     [string]$Password,
-    [string]$Inbox
+    [string]$Inbox,
+    # Upgrade the connection with STARTTLS (the server's certificate is not validated: it's usually self-signed).
+    [switch]$StartTls
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,6 +53,15 @@ for ($n = 1; $n -le $Count; $n++) {
     try {
         Read-Reply $reader | Out-Null
         Send-Command $writer $reader "EHLO $env:COMPUTERNAME" | Out-Null
+        if ($StartTls) {
+            Send-Command $writer $reader 'STARTTLS' | Out-Null
+            $ssl = [System.Net.Security.SslStream]::new($stream, $false, { $true })
+            $ssl.AuthenticateAsClient($Server)
+            $reader = [System.IO.StreamReader]::new($ssl, [Text.Encoding]::ASCII)
+            $writer = [System.IO.StreamWriter]::new($ssl, [Text.Encoding]::ASCII)
+            Send-Command $writer $reader "EHLO $env:COMPUTERNAME" | Out-Null
+            Write-Host "  TLS: $($ssl.SslProtocol), server certificate $($ssl.RemoteCertificate.Subject)"
+        }
         if ($User) {
             $plain = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("`0$User`0$Password"))
             Send-Command $writer $reader "AUTH PLAIN $plain" | Out-Null

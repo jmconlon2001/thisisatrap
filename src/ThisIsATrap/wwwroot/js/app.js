@@ -837,12 +837,31 @@
             .catch(function (e) { toast('Purge failed: ' + e.message, 'error'); });
     }
 
+    // TLS details for the connect page: ports, certificate fingerprint, and download links.
+    function tlsHtml(t, host) {
+        if (!t || !t.enabled) return '<div class="form-text" style="margin-top:.5rem">TLS is off. Turn on STARTTLS or an SMTPS port with the <span class="mono">Tls</span> settings if your app insists on encryption.</div>';
+        if (t.error) return '<div class="link-error" style="margin-top:.5rem">TLS is enabled but the certificate failed to load: ' + esc(t.error) + '</div>';
+        var c = t.certificate;
+        return '<div class="form-section-title" style="margin-top:1.2rem">TLS</div>' +
+            '<div class="stat-row">' +
+            '<div><strong>' + (t.startTls ? 'On' : 'Off') + '</strong><span>STARTTLS</span></div>' +
+            '<div><strong class="mono">' + (t.smtpsPort || '—') + '</strong><span>SMTPS (implicit TLS) port</span></div>' +
+            '<div><strong>' + (c && c.selfSigned ? 'Self-signed' : 'Configured') + '</strong><span>Certificate</span></div></div>' +
+            (c ? '<div class="form-text" style="margin-top:.5rem">' + esc(c.subject) + ' · expires ' + esc(new Date(c.notAfter).toLocaleDateString()) +
+                '<br>SHA-1 <span class="mono">' + esc(c.thumbprint) + '</span>' +
+                (c.selfSigned ? '<br>Clients must trust this certificate (or skip verification in test code). Download it: ' : '<br>Download: ') +
+                '<a href="api/tls/certificate" download>.cer</a> · <a href="api/tls/certificate?format=pem" download>.pem</a></div>' : '') +
+            '<pre class="cs-preview">// .NET: STARTTLS on port ' + esc(String(state.settings.smtp.port)) + '\nvar smtp = new SmtpClient("' + esc(host) + '", ' + state.settings.smtp.port + ') { EnableSsl = true };</pre>';
+    }
+
     function openConnect() {
         loadSettings().then(function (s) {
             var host = location.hostname, port = s.smtp.port;
             openModal('How to connect', 'i-info',
                 '<p style="margin-top:0">Point any app’s SMTP settings at this server. Every message is accepted and shown here. <strong>Nothing is ever delivered to real recipients.</strong> Any username and password are accepted, or you can use none. TLS isn’t needed.</p>' +
-                '<div class="stat-row"><div><strong class="mono">' + esc(host) + '</strong><span>Host</span></div><div><strong class="mono">' + port + '</strong><span>Port</span></div><div><strong>None</strong><span>TLS / auth</span></div></div>' +
+                '<div class="stat-row"><div><strong class="mono">' + esc(host) + '</strong><span>Host</span></div><div><strong class="mono">' + port + '</strong><span>Port</span></div>' +
+                '<div><strong>' + (s.tls.startTls ? 'STARTTLS (optional)' : 'None') + '</strong><span>TLS on port ' + port + '</span></div></div>' +
+                tlsHtml(s.tls, host) +
                 '<div class="form-section-title" style="margin-top:1.2rem">Separate inboxes per app</div>' +
                 '<p style="margin:.3rem 0 0">The <strong>SMTP username</strong> picks the inbox: log in as <span class="mono">billing-api</span> (any password) and mail lands in a “billing-api” inbox' +
                 (s.smtp.autoCreateInboxes ? ', created automatically the first time.' : ' (create it first with <a href="#" data-action="new-inbox">New inbox</a>).') +
@@ -935,6 +954,9 @@
                     ['Address', esc(location.hostname + ':' + smtp.port), true],
                     smtp.port !== smtp.listenPort ? ['Listening on', String(smtp.listenPort), true] : null,
                     ['Greeting name', esc(smtp.serverName), true],
+                    ['TLS', !smtp.tls.enabled ? 'Off' : smtp.tls.error ? '<span class="text-bad">' + esc(smtp.tls.error) + '</span>'
+                        : [smtp.tls.startTls ? 'STARTTLS' : '', smtp.tls.smtpsPort ? 'SMTPS on ' + smtp.tls.smtpsPort : ''].filter(Boolean).join(' · ') +
+                          (smtp.tls.certificate ? ' · cert expires ' + esc(new Date(smtp.tls.certificate.notAfter).toLocaleDateString()) : '')],
                     ['Max message size', smtp.maxMessageSizeMb + ' MB'],
                 ])) +
             card('i-database', 'Storage',

@@ -9,8 +9,9 @@ public static class SettingsEndpoints
 {
     public static void MapSettings(this RouteGroupBuilder api)
     {
-        api.MapGet("/settings", (MailStore store, IOptions<TrapOptions> options, EventHub events, RuntimeStats stats) => Results.Ok(new
+        api.MapGet("/settings", (MailStore store, IOptions<TrapOptions> options, EventHub events, RuntimeStats stats, SmtpTls tls) => Results.Ok(new
         {
+            tls = TlsDto(tls),
             purge = store.GetPurgeSettings(),
             lastPurgeUtc = PurgeService.LastRunUtc,
             lastPurgeRemoved = PurgeService.LastRemoved,
@@ -38,6 +39,15 @@ public static class SettingsEndpoints
         });
 
         api.MapPost("/purge", (PurgeService purge) => Results.Ok(new { removed = purge.RunOnce() }));
+
+        // Public part of the SMTP TLS certificate, so clients can trust a self-signed one. Never the private key.
+        api.MapGet("/tls/certificate", (SmtpTls tls, string? format) =>
+        {
+            if (!tls.Enabled || tls.Certificate is not { } cert) return Results.NotFound(new { error = "SMTP TLS is not enabled." });
+            return format == "pem"
+                ? Results.File(System.Text.Encoding.ASCII.GetBytes(cert.ExportCertificatePem() + "\n"), "application/x-pem-file", "thisisatrap-smtp.pem")
+                : Results.File(cert.Export(System.Security.Cryptography.X509Certificates.X509ContentType.Cert), "application/pkix-cert", "thisisatrap-smtp.cer");
+        });
 
         // Live updates (new mail toasts) via Server-Sent Events.
         api.MapGet("/events", async (HttpContext http, EventHub hub, IHostApplicationLifetime lifetime) =>
@@ -67,6 +77,27 @@ public static class SettingsEndpoints
             catch (OperationCanceledException) { }
             finally { hub.Unsubscribe(id); }
         });
+    }
+
+    internal static object TlsDto(SmtpTls tls)
+    {
+        var o = tls.Options;
+        CertificateInfo? info = null;
+        string? error = null;
+        if (tls.Enabled)
+        {
+            try { info = tls.Info; }
+            catch (Exception ex) { error = ex.Message; }
+        }
+        return new
+        {
+            enabled = tls.Enabled,
+            startTls = o.StartTls,
+            smtpsPort = o.PublicSmtpsPort ?? o.SmtpsPort,
+            smtpsListenPort = o.SmtpsPort,
+            certificate = info,
+            error,
+        };
     }
 
     /// <summary>Keeps user-entered purge rules within sane bounds.</summary>

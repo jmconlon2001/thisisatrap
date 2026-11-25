@@ -40,6 +40,7 @@ ThisIsATrap is a **real SMTP server that never delivers anything**. Point your a
 - [HTML check](#html-check)
 - [Spam score](#spam-score)
 - [Link & image checker](#link--image-checker)
+- [TLS (STARTTLS / SMTPS)](#tls-starttls--smtps)
 - [Inboxes](#inboxes)
 - [Auto-purge](#auto-purge)
 - [Status & health](#status--health)
@@ -131,7 +132,7 @@ Any [configuration](#configuration) key can be set with an environment variable 
 | --- | --- |
 | Host | The server's name or IP |
 | Port | `25` (or whatever you deployed with) |
-| TLS / SSL | **Off** (no STARTTLS) |
+| TLS / SSL | **Off** by default. STARTTLS and SMTPS (465) can be turned on, see [TLS](#tls-starttls--smtps) |
 | Authentication | None. Any username and password is also accepted. |
 
 The **How to connect** page in the UI shows ready-to-paste snippets for the current server. For example:
@@ -204,6 +205,27 @@ The **Links** tab lists every link, image, background image and bare URL in the 
 **Check links** then requests each URL (HEAD, falling back to GET; 8 seconds each, 8 at a time, at most 150). Each result shows the HTTP status, any redirect chain (including an https → http downgrade), response time, and whether an image URL actually returns an image.
 
 Checking only makes outbound HTTP requests; it never sends mail. For safety, private-network and loopback addresses are **never fetched** (they're flagged instead). Cloud metadata addresses (`169.254.169.254`) are always refused. Every connection is checked against the IP addresses it actually resolves to, including redirects. If you really do need to check links on your own network, set `LinkCheck:AllowPrivateNetworks` to `true`.
+
+## TLS (STARTTLS / SMTPS)
+
+TLS is **off by default**, deliberately. If the server advertises STARTTLS, clients such as nodemailer upgrade automatically and then reject a self-signed certificate. Turn it on when an app insists on encryption:
+
+```json
+"ThisIsATrap": {
+  "Tls": {
+    "StartTls": true,          // offer STARTTLS on the normal SMTP port (still optional for clients)
+    "SmtpsPort": 465,          // also listen with implicit TLS (null = no SMTPS port)
+    "CertificatePath": "",     // a .pfx to use; empty = generate a self-signed certificate
+    "CertificatePassword": ""
+  }
+}
+```
+
+- **The generated certificate** covers the server name, the machine name and `localhost`, with a 5-year lifetime. It's stored as `smtp-cert.pfx` in the data folder, so its fingerprint stays the same across restarts, and it's renewed automatically 30 days before it expires.
+- **Trusting it:** download the public certificate from **How to connect**, or from `/api/tls/certificate` (`.cer`, or add `?format=pem`). Import it into your clients, or turn off certificate validation in test code.
+- **Protocols:** TLS 1.2 and 1.3 only. Plain connections keep working on the main port even when STARTTLS is offered.
+
+Deploying to IIS: `.\deploy\Deploy-ThisIsATrap.ps1 -StartTls -SmtpsPort 465` (optionally add `-CertificatePath`/`-CertificatePassword`), which also opens the firewall for the SMTPS port. With Docker, see the commented TLS lines in `docker-compose.yml`. To test it: `.\tools\Send-TestMail.ps1 -StartTls`.
 
 ## Inboxes
 
@@ -280,6 +302,8 @@ Static settings live in `appsettings.json` under `ThisIsATrap`. The deploy scrip
 | `SmtpPort` | SMTP listen port (all interfaces) |
 | `SpamAssassin:Host` / `:Port` | Optional `spamd` server for real SpamAssassin scoring (default port 783). Empty = built-in rules only |
 | `LinkCheck:AllowPrivateNetworks` | `false`. Set `true` to let the link checker fetch localhost/private-network URLs |
+| `Tls:StartTls` / `Tls:SmtpsPort` | Offer STARTTLS / listen with implicit TLS (both off by default). See [TLS](#tls-starttls--smtps) |
+| `Tls:CertificatePath` / `Tls:CertificatePassword` | PFX to use instead of the generated self-signed certificate |
 | `AutoCreateInboxes` | `true`: an unknown SMTP username creates an inbox. `false`: such mail goes to Default |
 | `PublicSmtpPort` | Optional. The port shown in the UI when clients reach SMTP on a different port than it listens on, for example behind a Docker port mapping |
 | `ServerName` | Name announced in the SMTP greeting |
@@ -343,6 +367,7 @@ Everything the UI does is available over plain HTTP, which is handy for automate
 | `PUT` | `/api/settings/purge` | Update purge rules |
 | `POST` | `/api/purge` | Run purge now |
 | `GET` | `/api/events` | Server-Sent Events stream |
+| `GET` | `/api/tls/certificate[?format=pem]` | Public SMTP TLS certificate (404 when TLS is off) |
 | `GET` | `/api/status` | Everything on the status page: health, SMTP counters, storage, disk, purge, version, uptime |
 | `GET` | `/healthz` | Liveness: `200 Healthy` while the process serves HTTP |
 | `GET` | `/readyz` | Readiness: `200` when SMTP is listening, the database answers and the data folder is writable; `503` otherwise |
