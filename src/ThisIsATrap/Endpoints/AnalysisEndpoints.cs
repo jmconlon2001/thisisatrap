@@ -18,6 +18,16 @@ public static class AnalysisEndpoints
         services.Configure<SpamAssassinOptions>(config.GetSection($"{TrapOptions.LegacySection}:SpamAssassin"));
         services.Configure<SpamAssassinOptions>(config.GetSection($"{TrapOptions.Section}:SpamAssassin"));
         services.AddSingleton(sp => new SpamAssassinClient(sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<SpamAssassinOptions>>().Value));
+
+        services.Configure<LinkCheckOptions>(config.GetSection($"{TrapOptions.Section}:LinkCheck"));
+        services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<LinkCheckOptions>>().Value);
+        services.AddHttpClient(LinkChecker.HttpClientName, c =>
+            {
+                c.Timeout = Timeout.InfiniteTimeSpan;   // per-link timeouts are applied by LinkChecker
+                c.DefaultRequestHeaders.UserAgent.ParseAdd($"ThisIsATrap-LinkCheck/{HealthEndpoints.Version.Split('+')[0]}");
+            })
+            .ConfigurePrimaryHttpMessageHandler(sp => OutboundPolicy.CreateHandler(sp.GetRequiredService<LinkCheckOptions>().AllowPrivateNetworks));
+        services.AddSingleton<LinkChecker>();
         return services;
     }
 
@@ -33,6 +43,20 @@ public static class AnalysisEndpoints
                 return check.Run(message.HtmlBody);
             });
             return Results.Ok(report);
+        });
+
+        // Every link and image in the message, with static issues, without touching the network.
+        api.MapGet("/messages/{id}/links", async (string id, MailStore store, LinkChecker links, CancellationToken ct) =>
+        {
+            if (store.Get(id) is null) return Results.NotFound();
+            return Results.Ok(links.Inspect(await MessageParser.LoadAsync(store.RawPath(id), ct)));
+        });
+
+        // Fetches each http(s) URL (HEAD/GET, redirects followed, private networks refused).
+        api.MapPost("/messages/{id}/links/check", async (string id, MailStore store, LinkChecker links, CancellationToken ct) =>
+        {
+            if (store.Get(id) is null) return Results.NotFound();
+            return Results.Ok(await links.CheckAsync(await MessageParser.LoadAsync(store.RawPath(id), ct), ct));
         });
 
         // Built-in content rules always; real SpamAssassin scoring too when ThisIsATrap:SpamAssassin:Host is set.

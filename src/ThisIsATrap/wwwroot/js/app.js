@@ -379,7 +379,7 @@
 
         var tabs = [
             ['html', 'HTML', d.hasHtml], ['text', 'Plain text', !!d.text], ['source', 'HTML source', d.hasHtml],
-            ['check', 'HTML check', d.hasHtml], ['spam', 'Spam score', true],
+            ['check', 'HTML check', d.hasHtml], ['spam', 'Spam score', true], ['links', 'Links', true],
             ['headers', 'Headers (' + d.headers.length + ')', true], ['raw', 'Raw', true],
         ].map(function (t) {
             return '<button type="button" class="tab' + (state.tab === t[0] ? ' active' : '') + '" data-tab="' + t[0] + '"' + (t[2] ? '' : ' disabled') + '>' + t[1] + '</button>';
@@ -439,6 +439,10 @@
                 break;
             case 'spam':
                 loadAnalysis(d.id, 'spam', renderSpam);
+                break;
+            case 'links':
+                if (analysisCache['links/check:' + d.id]) renderLinks(analysisCache['links/check:' + d.id], body);
+                else loadAnalysis(d.id, 'links', renderLinks);
                 break;
             case 'headers':
                 body.innerHTML = '<table class="headers-table"><tbody>' + d.headers.map(function (h) {
@@ -537,6 +541,58 @@
             '<div class="analysis-section-title">Content checks</div>' +
             ruleTable(r.rules, 'No content problems found.') +
             '</div>';
+    }
+
+    var linkStatus = {
+        ok: ['ok', 'OK'], redirect: ['ok', 'Redirects'], broken: ['bad', 'Broken'], error: ['bad', 'Error'], timeout: ['bad', 'Timeout'],
+        blocked: ['warn', 'Not reachable'], missing: ['bad', 'Missing'], skipped: ['muted', 'Not fetched'], unchecked: ['muted', 'Not checked'],
+    };
+    var issueText = {
+        'insecure-http': 'http://', 'local-address': 'Local/private address', 'url-shortener': 'URL shortener', 'text-mismatch': 'Text shows another domain',
+        'downgrade-to-http': 'Redirects to http://', 'not-an-image': 'Not an image', 'relative-url': 'Relative URL',
+    };
+    var kindIcon = { link: 'i-link', image: 'i-image', background: 'i-image', text: 'i-file' };
+
+    function renderLinks(r, body) {
+        var rows = r.links.map(function (l) {
+            var st = linkStatus[l.status] || ['muted', l.status];
+            var href = /^https?:/i.test(l.url) ? l.url : null;
+            return '<tr><td><span class="link-status s-' + st[0] + '">' + st[1] + (l.httpStatus ? ' ' + l.httpStatus : '') + '</span></td>' +
+                '<td><i class="i ' + (kindIcon[l.kind] || 'i-link') + '" title="' + esc(l.kind) + '"></i></td>' +
+                '<td class="link-cell">' + (href ? '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(l.url) + '</a>' : '<span class="mono">' + esc(l.url) + '</span>') +
+                (l.text ? '<div class="link-text">' + esc(l.text) + '</div>' : '') +
+                (l.redirects.length ? '<div class="link-redirects">→ ' + l.redirects.map(esc).join('<br>→ ') + '</div>' : '') +
+                (l.error ? '<div class="link-error">' + esc(l.error) + '</div>' : '') +
+                (l.issues.length ? '<div class="link-issues">' + l.issues.map(function (i) { return '<span class="support-chip s-a">' + esc(issueText[i] || i) + '</span>'; }).join('') + '</div>' : '') +
+                '</td><td class="mono link-ms">' + (l.elapsedMs != null ? l.elapsedMs + ' ms' : '') + '</td></tr>';
+        }).join('');
+        body.innerHTML = '<div class="analysis">' +
+            '<div class="links-head"><div class="stat-row links-stats">' +
+            '<div><strong>' + r.total + '</strong><span>Links &amp; images</span></div>' +
+            '<div><strong class="' + (r.broken ? 'text-bad' : '') + '">' + (r.checked ? r.broken : '—') + '</strong><span>' + (r.checked ? 'Problems' : 'Not checked yet') + '</span></div>' +
+            '<div><strong class="' + (r.warnings ? 'text-warn' : '') + '">' + r.warnings + '</strong><span>With warnings</span></div></div>' +
+            '<button type="button" class="btn btn-primary" data-action="check-links"><i class="i i-refresh"></i> ' + (r.checked ? 'Check again' : 'Check links') + '</button></div>' +
+            '<p class="form-text" style="margin:0">' + (r.checked
+                ? 'Each URL was requested (HEAD, then GET if needed) and redirects followed. Local and private-network addresses are never fetched.'
+                : 'Lists every link and image. <strong>Check links</strong> requests each URL to find broken links, redirects and slow responses.') + '</p>' +
+            (r.total ? '<table class="rule-table link-table"><thead><tr><th>Status</th><th></th><th>URL</th><th>Time</th></tr></thead><tbody>' + rows + '</tbody></table>'
+                : '<div class="rule-empty"><i class="i i-check"></i> No links or images in this message.</div>') +
+            '</div>';
+    }
+
+    function checkLinks() {
+        var d = state.detail;
+        if (!d) return;
+        var btn = document.querySelector('[data-action="check-links"]');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="i i-refresh spin"></i> Checking…'; }
+        api('messages/' + d.id + '/links/check', { method: 'POST' }).then(function (r) {
+            analysisCache['links/check:' + d.id] = r;
+            if (state.detail && state.detail.id === d.id && state.tab === 'links') renderLinks(r, $('tab-body'));
+            toast(r.broken ? r.broken + ' link problem' + (r.broken === 1 ? '' : 's') + ' found' : 'All links OK', r.broken ? 'error' : undefined);
+        }).catch(function (e) {
+            toast('Link check failed: ' + e.message, 'error');
+            if (btn) { btn.disabled = false; btn.textContent = 'Check links'; }
+        });
     }
 
     // ---------- responsive preview ----------
@@ -1010,6 +1066,7 @@
             case 'save-settings': save(); break;
             case 'purge-now': purgeNow(); break;
             case 'status-refresh': loadStatus(); break;
+            case 'check-links': checkLinks(); break;
         }
     });
 

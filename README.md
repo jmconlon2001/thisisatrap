@@ -39,6 +39,7 @@ ThisIsATrap is a **real SMTP server that never delivers anything**. Point your a
 - [Connecting your apps](#connecting-your-apps)
 - [HTML check](#html-check)
 - [Spam score](#spam-score)
+- [Link & image checker](#link--image-checker)
 - [Inboxes](#inboxes)
 - [Auto-purge](#auto-purge)
 - [Status & health](#status--health)
@@ -190,6 +191,20 @@ The built-in content checks always run. They cover:
 
 With Docker, uncomment the `spamassassin` service in `docker-compose.yml`. ThisIsATrap only sends the message to `spamd` for scoring and never relays it anywhere.
 
+## Link & image checker
+
+The **Links** tab lists every link, image, background image and bare URL in the message. It flags problems straight away, before anything is fetched:
+- `http://` links
+- links to **localhost or a private network**: a dev URL that leaked into a template
+- URL shorteners
+- link text that shows a different domain than the target
+- relative URLs, which don't work in email
+- `cid:` images with no matching attachment
+
+**Check links** then requests each URL (HEAD, falling back to GET; 8 seconds each, 8 at a time, at most 150). Each result shows the HTTP status, any redirect chain (including an https → http downgrade), response time, and whether an image URL actually returns an image.
+
+Checking only makes outbound HTTP requests; it never sends mail. For safety, private-network and loopback addresses are **never fetched** (they're flagged instead). Cloud metadata addresses (`169.254.169.254`) are always refused. Every connection is checked against the IP addresses it actually resolves to, including redirects. If you really do need to check links on your own network, set `LinkCheck:AllowPrivateNetworks` to `true`.
+
 ## Inboxes
 
 Give each app, team or environment its own inbox. The **SMTP username** decides where a message lands:
@@ -264,6 +279,7 @@ Static settings live in `appsettings.json` under `ThisIsATrap`. The deploy scrip
 | --- | --- |
 | `SmtpPort` | SMTP listen port (all interfaces) |
 | `SpamAssassin:Host` / `:Port` | Optional `spamd` server for real SpamAssassin scoring (default port 783). Empty = built-in rules only |
+| `LinkCheck:AllowPrivateNetworks` | `false`. Set `true` to let the link checker fetch localhost/private-network URLs |
 | `AutoCreateInboxes` | `true`: an unknown SMTP username creates an inbox. `false`: such mail goes to Default |
 | `PublicSmtpPort` | Optional. The port shown in the UI when clients reach SMTP on a different port than it listens on, for example behind a Docker port mapping |
 | `ServerName` | Name announced in the SMTP greeting |
@@ -310,6 +326,8 @@ Everything the UI does is available over plain HTTP, which is handy for automate
 | `GET` | `/api/messages/{id}` | Full detail: headers, text, HTML, attachments |
 | `GET` | `/api/messages/{id}/html` | Rendered HTML body |
 | `GET` | `/api/messages/{id}/html-check` | Email-client support report (score, per-client, per-feature) |
+| `GET` | `/api/messages/{id}/links` | Every link and image with static issues (no network) |
+| `POST` | `/api/messages/{id}/links/check` | Fetch each URL: status, redirects, timing |
 | `GET` | `/api/messages/{id}/spam` | Spam score, verdict and matched rules (built-in, plus SpamAssassin when configured) |
 | `GET` | `/api/messages/{id}/raw[?download=true]` | Raw source / `.eml` download |
 | `GET` | `/api/messages/{id}/attachments/{index}[?download=true]` | Attachment content |
