@@ -32,6 +32,8 @@
                 <div class="nav-section">System</div>
                 <button type="button" class="nav-item-link" data-view="status"><i class="i i-activity"></i> Status &amp; health <span class="nav-health" id="nav-health"></span></button>
                 <button type="button" class="nav-item-link" data-action="settings"><i class="i i-settings"></i> Settings &amp; auto-purge</button>
+                <button type="button" class="nav-item-link" data-view="logs"><i class="i i-file"></i> Logs</button>
+                <button type="button" class="nav-item-link" data-action="smtp-access"><i class="i i-shield"></i> SMTP access</button>
                 <button type="button" class="nav-item-link" data-action="webhooks"><i class="i i-webhook"></i> Webhooks</button>
                 <button type="button" class="nav-item-link" data-action="smtp-rules"><i class="i i-alert"></i> Error simulation</button>
                 <button type="button" class="nav-item-link" data-action="connect"><i class="i i-info"></i> How to connect</button>
@@ -50,6 +52,7 @@
             <header class="topbar">
                 <label for="nav-toggle" class="icon-btn mobile-only" title="Menu"><i class="i i-menu"></i></label>
                 <a class="topbar-brand" href="./"><img class="brand-mark" src="img/logo-mark.svg" alt="" /> <span class="desktop-only">ThisIsATrap</span></a>
+                <span class="env-badge" id="env-badge" title="Environment" hidden></span>
                 <div class="input-icon">
                     <i class="i i-search"></i>
                     <input id="search" class="form-control" type="search" placeholder="Search subject, sender, recipient, text…" autocomplete="off" />
@@ -80,6 +83,7 @@
             </div>
 
             <section class="status-view" id="status-view" aria-label="Status and health" hidden></section>
+            <section class="status-view" id="logs-view" aria-label="Logs" hidden></section>
         </div>
     </div>
 

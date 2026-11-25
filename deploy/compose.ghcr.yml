@@ -18,6 +18,7 @@ services:
     environment:
       ThisIsATrap__PublicSmtpPort: "2525"   # keep in sync with the host SMTP port above
       ThisIsATrap__ServerName: "thisisatrap.local"
+      ThisIsATrap__EnvironmentLabel: "DEV"          # header badge: DEV / STAGE / QA …
     volumes:
       - thisisatrap-data:/data
 

@@ -43,6 +43,9 @@ ThisIsATrap is a **real SMTP server that never delivers anything**. Point your a
 - [TLS (STARTTLS / SMTPS)](#tls-starttls--smtps)
 - [Webhooks](#webhooks)
 - [Error simulation](#error-simulation)
+- [Environment label](#environment-label)
+- [SMTP access (IP allowlist)](#smtp-access-ip-allowlist)
+- [Logs](#logs)
 - [Inboxes](#inboxes)
 - [Auto-purge](#auto-purge)
 - [Status & health](#status--health)
@@ -283,6 +286,37 @@ You can add your own rules for `RCPT TO` or `MAIL FROM`. Each rule has:
 
 The first matching rule wins. Each rejection pops up a warning toast and is counted on the status page. Rules are checked with a linear-time regex engine, so no pattern can stall the server.
 
+## Environment label
+
+When Dev, Stage and QA each have their own trap, give each one a label. It shows as a coloured badge in the header and in the browser tab title (e.g. `[QA] ThisIsATrap`), so nobody reads the wrong environment's mail.
+
+- **Per deployment:** set `EnvironmentLabel` (and optionally `EnvironmentColor`) in `appsettings.json`, or as environment variables. For Docker: `ThisIsATrap__EnvironmentLabel=QA`.
+- **From the UI:** **Settings & auto-purge → Environment label**. This overrides the configured value; clear it to go back to the configuration.
+- **Colours:** `red`, `orange`, `amber`, `green`, `teal`, `blue`, `indigo`, `purple`, `pink`, `gray`, or `#rgb`/`#rrggbb`. Leave it empty for automatic: *prod/live* → red, *stage/QA/UAT/test* → amber, *dev/local* → green, anything else indigo.
+
+## SMTP access (IP allowlist)
+
+**Off by default.** By default any machine that can reach the SMTP port may send. Turn it on under **SMTP access** to accept mail only from listed addresses:
+
+- **Entries:** one per line, either a single IP (`10.20.0.15`, `::1`) or a CIDR range (`192.168.1.0/24`, `fd00::/8`). Lines starting with `#` are ignored.
+- **Blocked clients** get `554 5.7.1 Client host … is not allowed to send mail here` at `MAIL FROM`. The attempt shows as a warning toast and in **Logs**, and counts as rejected on the status page.
+- **This machine** (`127.0.0.1`/`::1`) is always allowed unless you untick that option. The dialog refuses to save a list that would block everyone.
+- **Add my address** fills in the address your browser is connecting from.
+- **Scope:** it only governs SMTP. The web UI and API are unaffected. Changes take effect immediately, with no restart.
+
+With Docker, the address seen may be the Docker gateway rather than the real client (depending on the network mode). Check **Logs** for `SMTP connection from …` to see what to allow.
+
+## Logs
+
+**Logs** in the sidebar (or `/#logs`) shows the app's recent log lines live:
+- SMTP connections, trapped messages
+- allowlist and error-simulation rejections
+- webhook failures, purge runs, startup and errors
+
+**Controls:** filter by level and text (category, IP address, subject…), follow the newest lines, pause, **Download** as a `.log` file, or **Clear**.
+
+The most recent 2000 lines are kept in memory only (`LogViewer:Capacity`), and nothing extra is written to disk. Your normal logging setup (console, IIS stdout, Docker logs) keeps working as before.
+
 ## Inboxes
 
 Give each app, team or environment its own inbox. The **SMTP username** decides where a message lands:
@@ -361,6 +395,8 @@ Static settings live in `appsettings.json` under `ThisIsATrap`. The deploy scrip
 | `Tls:StartTls` / `Tls:SmtpsPort` | Offer STARTTLS / listen with implicit TLS (both off by default). See [TLS](#tls-starttls--smtps) |
 | `Tls:CertificatePath` / `Tls:CertificatePassword` | PFX to use instead of the generated self-signed certificate |
 | `Webhooks:PublicUrl` | Base URL used for absolute links in webhook payloads |
+| `EnvironmentLabel` / `EnvironmentColor` | Header badge, e.g. `QA` / `amber`. See [Environment label](#environment-label) |
+| `LogViewer:Capacity` | Log lines kept in memory for the Logs page (default `2000`) |
 | `AutoCreateInboxes` | `true`: an unknown SMTP username creates an inbox. `false`: such mail goes to Default |
 | `PublicSmtpPort` | Optional. The port shown in the UI when clients reach SMTP on a different port than it listens on, for example behind a Docker port mapping |
 | `ServerName` | Name announced in the SMTP greeting |
@@ -427,6 +463,11 @@ Everything the UI does is available over plain HTTP, which is handy for automate
 | `GET` / `PUT` | `/api/settings/webhooks` | List / replace webhooks (`secret`: omit = keep, `""` = remove) |
 | `POST` | `/api/settings/webhooks/{id}/test` | Send a sample notification now |
 | `GET` / `PUT` | `/api/settings/smtp-rules` | Error-simulation rules (`/defaults` for the built-ins) |
+| `GET` / `PUT` | `/api/settings/environment` | Environment label: `{ "label": "QA", "color": "amber" }` (`null` label = use config) |
+| `GET` / `PUT` | `/api/settings/smtp-access` | SMTP allowlist: `{ "enabled", "allow": ["10.0.0.0/8"], "alwaysAllowLoopback" }` |
+| `GET` | `/api/logs?after=&level=&q=&category=&take=` | Recent log lines (`after` = last `seq` seen, for tailing) |
+| `GET` | `/api/logs/download` | The same lines as a `.log` file |
+| `DELETE` | `/api/logs` | Clear the in-memory log |
 | `GET` | `/api/tls/certificate[?format=pem]` | Public SMTP TLS certificate (404 when TLS is off) |
 | `GET` | `/api/status` | Everything on the status page: health, SMTP counters, storage, disk, purge, version, uptime |
 | `GET` | `/healthz` | Liveness: `200 Healthy` while the process serves HTTP |

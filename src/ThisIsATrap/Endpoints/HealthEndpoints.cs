@@ -48,7 +48,7 @@ public static class HealthEndpoints
         });
 
         app.MapGet("/api/status", async (HealthCheckService health, MailStore store, RuntimeStats stats, EventHub events,
-            IOptions<TrapOptions> options, IWebHostEnvironment env, SmtpTls tls, CancellationToken ct) =>
+            IOptions<TrapOptions> options, IWebHostEnvironment env, SmtpTls tls, EnvironmentLabels labels, SmtpAccess access, CancellationToken ct) =>
         {
             var report = await health.CheckHealthAsync(c => c.Tags.Contains(ReadyTag), ct);
             var o = options.Value;
@@ -63,6 +63,7 @@ public static class HealthEndpoints
                 app = new
                 {
                     name = "ThisIsATrap",
+                    label = labels.Get().Label,
                     version = Version,
                     environment = env.EnvironmentName,
                     host = Environment.MachineName,
@@ -86,6 +87,7 @@ public static class HealthEndpoints
                     messagesRejected = stats.MessagesRejected,
                     lastMessageUtc = stats.LastMessageUtc,
                     tls = SettingsEndpoints.TlsDto(tls),
+                    allowlist = new { access.Get().Enabled, entries = access.Get().Allow.Count },
                 },
                 storage = new
                 {

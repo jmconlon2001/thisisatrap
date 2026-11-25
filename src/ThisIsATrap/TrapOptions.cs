@@ -32,6 +32,15 @@ public sealed class TrapOptions
     /// <summary>Where the SQLite index and raw .eml files are stored. Relative paths resolve against the app folder.</summary>
     public string DataPath { get; set; } = "App_Data";
 
+    /// <summary>
+    /// Optional label shown in the header (e.g. "DEV", "STAGE", "QA") so people can tell environments apart
+    /// when each has its own trap. Can be overridden from the Settings dialog.
+    /// </summary>
+    public string? EnvironmentLabel { get; set; }
+
+    /// <summary>Label colour: red, orange, amber, green, teal, blue, indigo, purple, pink, gray, or #rgb / #rrggbb.</summary>
+    public string? EnvironmentColor { get; set; }
+
     /// <summary>Optional TLS for the SMTP listener. Off by default.</summary>
     public SmtpTlsOptions Tls { get; set; } = new();
 }
