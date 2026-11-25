@@ -103,6 +103,20 @@ The script is idempotent. Re-run it to upgrade; stored mail and settings are kep
 
 ## Run with Docker
 
+### Prebuilt image (easiest)
+
+Every push that passes CI publishes a multi-arch image (amd64 and arm64) to the GitHub Container Registry:
+
+| Tag | Contents |
+| --- | --- |
+| `ghcr.io/jmconlon2001/thisisatrap:latest` | Newest build of `main` |
+| `ghcr.io/jmconlon2001/thisisatrap:<branch>` | Newest build of a branch (`/` becomes `-`) |
+| `ghcr.io/jmconlon2001/thisisatrap:sha-<commit>` | One exact commit |
+
+[`deploy/compose.ghcr.yml`](deploy/compose.ghcr.yml) uses it with no source or build step. Paste it into the OpenMediaVault Compose plugin or Portainer, or run `docker compose -f deploy/compose.ghcr.yml up -d`. To update, pull the image again and restart.
+
+### Build from source
+
 Runs on any Linux Docker host (or Docker Desktop). From the repo root:
 
 ```bash
