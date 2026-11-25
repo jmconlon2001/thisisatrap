@@ -2,7 +2,7 @@
 
 # The SDK stage runs natively on the build machine and cross-compiles for the target
 # architecture, so multi-arch builds (amd64 + arm64) don't run the compiler under emulation.
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 ARG TARGETARCH
 WORKDIR /src
 COPY src/ThisIsATrap/ThisIsATrap.csproj src/ThisIsATrap/
