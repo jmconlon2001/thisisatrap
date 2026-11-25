@@ -1,0 +1,18 @@
+#!/bin/sh
+# Fast checks before every commit: no secrets or local data, the solution builds, unit tests pass.
+# Install once per clone with: ./tools/Install-GitHooks.ps1   (or: git config core.hooksPath .githooks)
+set -e
+
+blocked=$(git diff --cached --name-only --diff-filter=ACMR | grep -Ei '(^|/)\.env($|\.)|\.pfx$|\.p12$|\.key$|(^|/)App_Data/|(^|/)TestResults/|\.db$' || true)
+if [ -n "$blocked" ]; then
+    echo "pre-commit: refusing to commit secrets or local data:" >&2
+    echo "$blocked" | sed 's/^/  /' >&2
+    exit 1
+fi
+
+# Only build and test when code or tests changed.
+if git diff --cached --name-only | grep -Eq '\.(cs|csproj|sln|json|html|js|css)$'; then
+    echo "pre-commit: build + unit tests"
+    dotnet build MailTrap.sln -warnaserror -nologo -v q
+    dotnet test --project tests/MailTrap.UnitTests --no-build --filter-trait "Category=Unit"
+fi

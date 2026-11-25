@@ -1,0 +1,13 @@
+* text=auto
+
+# Shell scripts and container files must keep LF or they break on Linux / in Git hooks.
+*.sh          text eol=lf
+.githooks/*   text eol=lf
+Dockerfile    text eol=lf
+*.yml         text eol=lf
+
+# Test fixtures are byte-exact.
+tests/Fixtures/** -text
+
+*.png binary
+*.db  binary

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.StaticFiles;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<MailTrapOptions>(builder.Configuration.GetSection(MailTrapOptions.Section));
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<MailStore>();
 builder.Services.AddSingleton<EventHub>();
 builder.Services.AddSingleton<PurgeService>();
@@ -183,3 +184,6 @@ static string FileNameFor(string subject, string ext)
     var name = new string((string.IsNullOrWhiteSpace(subject) ? "message" : subject).Select(c => invalid.Contains(c) ? '_' : c).ToArray()).Trim();
     return (name.Length > 80 ? name[..80] : name) + ext;
 }
+
+/// <summary>Exposed so integration tests can host the app with WebApplicationFactory.</summary>
+public partial class Program;

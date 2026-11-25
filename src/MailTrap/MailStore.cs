@@ -41,11 +41,13 @@ public sealed class MailStore
     private readonly string _connectionString;
     private readonly string _messageDir;
     private readonly ILogger<MailStore> _log;
+    private readonly TimeProvider _time;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public MailStore(IOptions<MailTrapOptions> options, IWebHostEnvironment env, ILogger<MailStore> log)
+    public MailStore(IOptions<MailTrapOptions> options, IWebHostEnvironment env, ILogger<MailStore> log, TimeProvider? time = null)
     {
         _log = log;
+        _time = time ?? TimeProvider.System;
         var dataPath = options.Value.DataPath;
         if (!Path.IsPathRooted(dataPath)) dataPath = Path.Combine(env.ContentRootPath, dataPath);
         DataPath = Path.GetFullPath(dataPath);
@@ -195,7 +197,7 @@ public sealed class MailStore
         var ids = new HashSet<string>();
         if (s.MaxAgeHours > 0)
         {
-            var cutoff = DateTimeOffset.UtcNow.AddHours(-s.MaxAgeHours).ToUnixTimeMilliseconds();
+            var cutoff = _time.GetUtcNow().AddHours(-s.MaxAgeHours).ToUnixTimeMilliseconds();
             ids.UnionWith(ReadIds(db, "SELECT id FROM messages WHERE received < $p", cutoff));
         }
         if (s.MaxMessages > 0)
