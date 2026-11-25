@@ -443,6 +443,18 @@ button { font: inherit; }
 [data-bs-theme=dark] .support-chip.s-a { color: #fcd34d; }
 [data-bs-theme=dark] .support-chip.s-n { color: #fca5a5; }
 
+.rule-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+.rule-table th { text-align: left; font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--sm-muted); padding: .35rem .6rem; border-bottom: 1px solid var(--sm-border); }
+.rule-table td { padding: .55rem .6rem; border-bottom: 1px solid var(--sm-border); vertical-align: top; }
+.rule-table td.mono { font-size: .76rem; white-space: nowrap; }
+.rule-pts { display: inline-block; min-width: 3rem; text-align: center; font-weight: 750; border-radius: 8px; padding: .1rem .35rem; font-size: .8rem; }
+.rule-pts.bad { background: rgba(239, 68, 68, .12); color: var(--sm-danger); }
+.rule-pts.warn { background: rgba(245, 158, 11, .14); color: #b45309; }
+.rule-pts.ok { background: rgba(16, 185, 129, .12); color: var(--sm-success); }
+[data-bs-theme=dark] .rule-pts.warn { color: #fbbf24; }
+.rule-detail { color: var(--sm-muted); font-size: .74rem; margin-top: .2rem; overflow-wrap: anywhere; }
+.rule-empty { display: flex; align-items: center; gap: .5rem; padding: .8rem; border: 1px dashed var(--sm-border); border-radius: 10px; color: var(--sm-success); font-weight: 600; font-size: .85rem; }
+
 /* ---------- Inboxes ---------- */
 .nav-section-row { display: flex; align-items: center; justify-content: space-between; }
 .nav-add { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; border: 1px solid rgba(255, 255, 255, .12); background: rgba(255, 255, 255, .04); color: var(--sm-sidebar-text); cursor: pointer; padding: 0; }

@@ -11,8 +11,8 @@ Working branch: `feature/mailtrap-parity`. The plan adds the features ThisIsATra
 | 4 | Multiple inboxes | Done |
 | 5 | Responsive preview | Done |
 | 6 | HTML check (caniemail) | Done |
-| 7 | Spam & content analysis | Next |
-| 8 | Link & image checker | |
+| 7 | Spam & content analysis | Done |
+| 8 | Link & image checker | Next |
 | 9 | STARTTLS / SMTPS | |
 | 10 | Webhooks & error simulation | |
 | 11 | Security audit & hardening | |

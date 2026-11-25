@@ -13,6 +13,15 @@ services:
       ThisIsATrap__MaxMessageSizeMb: "50"
     volumes:
       - thisisatrap-data:/data
+    # Optional real SpamAssassin scoring (see the spamassassin service below):
+    #   ThisIsATrap__SpamAssassin__Host: "spamassassin"
+
+  # Optional: SpamAssassin daemon used only to *score* trapped mail (nothing is relayed).
+  # Uncomment, then add ThisIsATrap__SpamAssassin__Host under the environment above.
+  # spamassassin:
+  #   image: instantlinux/spamassassin:latest
+  #   restart: unless-stopped
+  #   expose: ["783"]
 
 volumes:
   thisisatrap-data:

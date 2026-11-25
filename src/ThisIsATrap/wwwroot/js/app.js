@@ -379,7 +379,7 @@
 
         var tabs = [
             ['html', 'HTML', d.hasHtml], ['text', 'Plain text', !!d.text], ['source', 'HTML source', d.hasHtml],
-            ['check', 'HTML check', d.hasHtml],
+            ['check', 'HTML check', d.hasHtml], ['spam', 'Spam score', true],
             ['headers', 'Headers (' + d.headers.length + ')', true], ['raw', 'Raw', true],
         ].map(function (t) {
             return '<button type="button" class="tab' + (state.tab === t[0] ? ' active' : '') + '" data-tab="' + t[0] + '"' + (t[2] ? '' : ' disabled') + '>' + t[1] + '</button>';
@@ -436,6 +436,9 @@
                 break;
             case 'check':
                 loadAnalysis(d.id, 'html-check', renderHtmlCheck);
+                break;
+            case 'spam':
+                loadAnalysis(d.id, 'spam', renderSpam);
                 break;
             case 'headers':
                 body.innerHTML = '<table class="headers-table"><tbody>' + d.headers.map(function (h) {
@@ -505,6 +508,34 @@
             '<div class="client-grid">' + clients + '</div>' +
             '<div class="analysis-section-title">Features, least supported first <span class="legend"><span class="support-chip s-y">Supported</span><span class="support-chip s-a">Partial</span><span class="support-chip s-n">Not supported</span></span></div>' +
             (rows || '<div class="empty"><p>No HTML/CSS features with client-support data were found.</p></div>') +
+            '</div>';
+    }
+
+    function ruleTable(rules, emptyText) {
+        if (!rules.length) return '<div class="rule-empty"><i class="i i-check"></i> ' + emptyText + '</div>';
+        return '<table class="rule-table"><thead><tr><th>Points</th><th>Rule</th><th>Why</th></tr></thead><tbody>' +
+            rules.map(function (r) {
+                return '<tr><td><span class="rule-pts ' + (r.score >= 1.5 ? 'bad' : r.score > 0 ? 'warn' : 'ok') + '">' + (r.score > 0 ? '+' : '') + r.score.toFixed(1) + '</span></td>' +
+                    '<td class="mono">' + esc(r.id) + '</td>' +
+                    '<td>' + esc(r.description) + (r.detail ? '<div class="rule-detail mono">' + esc(r.detail) + '</div>' : '') + '</td></tr>';
+            }).join('') + '</tbody></table>';
+    }
+
+    function renderSpam(r, body) {
+        // Ring shows "how clean": 0 points = 100%, at/over the threshold = 0%.
+        var clean = Math.max(0, Math.min(100, 100 - (r.score / r.threshold) * 100));
+        var sa = r.spamAssassin;
+        body.innerHTML = '<div class="analysis">' +
+            '<div class="analysis-head"><div class="score-ring ' + (r.score >= r.threshold ? 'bad' : r.score >= 2 ? 'warn' : 'ok') + '" style="--p:' + clean + '"><div><strong>' + r.score.toFixed(1) + '</strong><span>of ' + r.threshold.toFixed(1) + '</span></div></div>' +
+            '<div><h3>' + esc(r.verdict) + '</h3>' +
+            '<p>Spam score using ' + (r.source === 'spamassassin' ? '<strong>SpamAssassin</strong>' : 'ThisIsATrap’s built-in rules (modelled on SpamAssassin)') +
+            '. Messages scoring ' + r.threshold.toFixed(1) + ' or more are usually filtered as spam.</p>' +
+            (sa && !sa.available ? '<p class="form-text">' + esc(sa.error) + '. Showing built-in rules only.</p>' : '') +
+            (!sa ? '<p class="form-text">Set <span class="mono">ThisIsATrap:SpamAssassin:Host</span> to add real SpamAssassin scoring.</p>' : '') +
+            '</div></div>' +
+            (sa && sa.available ? '<div class="analysis-section-title">SpamAssassin rules (' + sa.score.toFixed(1) + ' / ' + sa.threshold.toFixed(1) + ')</div>' + ruleTable(sa.rules, 'No SpamAssassin rules matched.') : '') +
+            '<div class="analysis-section-title">Content checks</div>' +
+            ruleTable(r.rules, 'No content problems found.') +
             '</div>';
     }
 

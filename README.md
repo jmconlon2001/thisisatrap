@@ -38,6 +38,7 @@ ThisIsATrap is a **real SMTP server that never delivers anything**. Point your a
 - [Run with Docker](#run-with-docker)
 - [Connecting your apps](#connecting-your-apps)
 - [HTML check](#html-check)
+- [Spam score](#spam-score)
 - [Inboxes](#inboxes)
 - [Auto-purge](#auto-purge)
 - [Status & health](#status--health)
@@ -165,6 +166,30 @@ The **HTML check** tab on any HTML message works like mailtrap.io's HTML Check. 
 
 Support data comes from [caniemail.com](https://www.caniemail.com) (MIT). It's bundled in the app, so the check works offline; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). To refresh it, run `.\tools\Update-CanIEmail.ps1`.
 
+## Spam score
+
+The **Spam score** tab gives each message a SpamAssassin-style score (5.0 or more usually means it gets filtered) and lists every rule that matched, with the points and the reason.
+
+The built-in content checks always run. They cover:
+
+| Area | Checks |
+| --- | --- |
+| Structure | HTML with no plain-text part, empty body, missing `Date` / `Message-ID` / `MIME-Version` / `From` |
+| Subject | Empty, all capitals, `!!!` or `$$$` |
+| Content | Common spam phrases, image-heavy with little text, images without `alt`, hidden text, HTML over 102 KB (Gmail clips it) |
+| Links | URL shorteners, link text showing a different domain than the target (phishing pattern), **links to localhost or private IPs** (a dev URL leaked into the email), plain `http://` |
+| Bulk mail | Unsubscribe link without a `List-Unsubscribe` header; `List-Unsubscribe` without one-click `List-Unsubscribe-Post` (Gmail and Yahoo require it for bulk senders) |
+| Sender | `From` domain not aligned with the envelope sender (SPF/DMARC would fail), `Reply-To` on another domain |
+| Attachments | Executables and macro-enabled Office files |
+
+**Real SpamAssassin (optional).** Point ThisIsATrap at a `spamd` server and the score comes from SpamAssassin itself; its rule hits appear next to the content checks:
+
+```json
+"ThisIsATrap": { "SpamAssassin": { "Host": "spamassassin", "Port": 783 } }
+```
+
+With Docker, uncomment the `spamassassin` service in `docker-compose.yml`. ThisIsATrap only sends the message to `spamd` for scoring and never relays it anywhere.
+
 ## Inboxes
 
 Give each app, team or environment its own inbox. The **SMTP username** decides where a message lands:
@@ -238,6 +263,7 @@ Static settings live in `appsettings.json` under `ThisIsATrap`. The deploy scrip
 | Key | Description |
 | --- | --- |
 | `SmtpPort` | SMTP listen port (all interfaces) |
+| `SpamAssassin:Host` / `:Port` | Optional `spamd` server for real SpamAssassin scoring (default port 783). Empty = built-in rules only |
 | `AutoCreateInboxes` | `true`: an unknown SMTP username creates an inbox. `false`: such mail goes to Default |
 | `PublicSmtpPort` | Optional. The port shown in the UI when clients reach SMTP on a different port than it listens on, for example behind a Docker port mapping |
 | `ServerName` | Name announced in the SMTP greeting |
@@ -284,6 +310,7 @@ Everything the UI does is available over plain HTTP, which is handy for automate
 | `GET` | `/api/messages/{id}` | Full detail: headers, text, HTML, attachments |
 | `GET` | `/api/messages/{id}/html` | Rendered HTML body |
 | `GET` | `/api/messages/{id}/html-check` | Email-client support report (score, per-client, per-feature) |
+| `GET` | `/api/messages/{id}/spam` | Spam score, verdict and matched rules (built-in, plus SpamAssassin when configured) |
 | `GET` | `/api/messages/{id}/raw[?download=true]` | Raw source / `.eml` download |
 | `GET` | `/api/messages/{id}/attachments/{index}[?download=true]` | Attachment content |
 | `POST` | `/api/messages/{id}/read?read=true\|false` | Mark read or unread |

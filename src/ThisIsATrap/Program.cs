@@ -18,7 +18,7 @@ builder.Services.AddSingleton<PurgeService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<PurgeService>());
 builder.Services.AddHostedService<SmtpListenerService>();
 builder.Services.AddTrapHealth();
-builder.Services.AddTrapAnalysis();
+builder.Services.AddTrapAnalysis(builder.Configuration);
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
 
 var app = builder.Build();
