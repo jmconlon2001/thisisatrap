@@ -24,8 +24,10 @@ public sealed record LinkResult(
 public sealed record LinkReport(bool Checked, int Total, int Ok, int Broken, int Warnings, IReadOnlyList<LinkResult> Links);
 
 /// <summary>Lists (and optionally fetches) every link and image in a message.</summary>
-public sealed class LinkChecker(IHttpClientFactory httpFactory, LinkCheckOptions options)
+public sealed partial class LinkChecker(IHttpClientFactory httpFactory, LinkCheckOptions options)
 {
+    [System.Text.RegularExpressions.GeneratedRegex(@"^[A-Za-z][A-Za-z0-9+.-]*:")] private static partial System.Text.RegularExpressions.Regex SchemeRx();
+
     public const string HttpClientName = "linkcheck";
     private static readonly string[] Shorteners = ["bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "is.gd", "buff.ly", "rebrand.ly", "cutt.ly", "shorturl.at", "rb.gy", "tiny.cc"];
 
@@ -64,7 +66,8 @@ public sealed class LinkChecker(IHttpClientFactory httpFactory, LinkCheckOptions
             return Result(l, MessageParser.FindByContentId(message, l.Url[4..]) is null ? "missing" : "ok", issues: [],
                 error: MessageParser.FindByContentId(message, l.Url[4..]) is null ? "No attachment with this Content-ID" : null);
         if (l.Url.StartsWith('#')) return Result(l, "skipped", error: "In-page anchor");
-        if (!Uri.TryCreate(l.Url, UriKind.Absolute, out var uri))
+        // Require an explicit scheme: on Linux, Uri treats "/path" as an absolute file:// URI.
+        if (!SchemeRx().IsMatch(l.Url) || !Uri.TryCreate(l.Url, UriKind.Absolute, out var uri))
             return Result(l, "error", issues: ["relative-url"], error: "Not an absolute URL; relative links don't work in email");
         if (uri.Scheme is not ("http" or "https"))
             return Result(l, "skipped", error: $"{uri.Scheme}: links aren't fetched");
